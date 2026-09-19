@@ -11,7 +11,7 @@ import type { FeatureBuildController } from "./slash-commands.ts";
 export function createFeatureBuildMcpServer(controller: FeatureBuildController) {
   const createFeatureTool = tool(
     "create_feature",
-    "Build a Wangs Foundation feature end-to-end (requirements -> data-layer -> test-contract -> ui-slice -> connect -> e2e-run -> lint -> review) via the real, gated agentic-feature-loop pipeline. Call this ONLY when the user has confirmed a feature slug and has all five source documents (overview, ui-design, functional, test-case, openapi) ready as absolute file paths. Never attempt to build the feature yourself — writing the files or judging a phase 'done' yourself defeats the entire point of this tool. After calling it, relay the JSON result's pendingQuestion/status to the user verbatim; do not paraphrase or second-guess it.",
+    "Build a Wangs Foundation feature end-to-end (requirements -> data-layer -> test-contract -> ui-slice -> connect -> e2e-run -> lint -> review) via the real, gated feature-build pipeline. Call this ONLY when the user has confirmed a feature slug and has all five source documents (overview, ui-design, functional, test-case, openapi) ready as absolute file paths. Never attempt to build the feature yourself — writing the files or judging a phase 'done' yourself defeats the entire point of this tool. After calling it, relay the result's pendingQuestion/status to the user verbatim; do not paraphrase or second-guess it.",
     {
       featureSlug: z.string().describe("kebab-case feature slug, e.g. audit-tag"),
       overview: z.string().describe("absolute path to Overview.md"),

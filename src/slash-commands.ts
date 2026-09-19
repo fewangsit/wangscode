@@ -1,6 +1,7 @@
 import type readline from "node:readline";
 
-import { runFeatureBuildStep, type FeatureBuildStepResult } from "./feature-build-runner.ts";
+import { runFeatureBuildPipeline } from "./pipeline/index.ts";
+import type { FeatureBuildResult } from "./pipeline/index.ts";
 import type { PendingFeatureBuild } from "./types.ts";
 
 export interface FeatureBuildStartArgs {
@@ -13,16 +14,23 @@ export interface FeatureBuildStartArgs {
   mode?: "interactive" | "auto";
 }
 
+/** A failure that never reached the pipeline's own PhaseName-scoped status-reporting (bad path, a phase throwing unexpectedly, ...) — "host" is deliberately not a real PhaseName. */
+interface HostFailureResult {
+  status: "failed";
+  escalation: { phase: "host"; failureReport: string };
+}
+
+type ControllerResult = FeatureBuildResult | HostFailureResult;
+
 function errorMessage(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
 }
 
-/** A failure that never reached agentic-feature-loop's own JSON-reporting convention (bad path, spawn error, ...). */
-function hostFailure(err: unknown): FeatureBuildStepResult {
+function hostFailure(err: unknown): HostFailureResult {
   return { status: "failed", escalation: { phase: "host", failureReport: errorMessage(err) } };
 }
 
-function renderResult(result: FeatureBuildStepResult): string {
+function renderResult(result: ControllerResult): string {
   if (result.status === "needs_input") return result.pendingQuestion ?? "(needs_input, tidak ada pertanyaan)";
   if (result.status === "completed") {
     return `Selesai. Fase: ${(result.completedPhases ?? []).join(" -> ")}`;
@@ -33,11 +41,11 @@ function renderResult(result: FeatureBuildStepResult): string {
 /**
  * Owns the "build a feature end-to-end" workflow's host-side state — the
  * SAME code path whether triggered by the model's `create_feature` tool or
- * the literal `/create-feature` slash command (see plan section 3). Never
- * lets the deterministic pipeline run more than one step concurrently, and
- * intercepts the user's next plain message when a build is awaiting a
- * clarification answer, so replying is just "type in the chat" — no CLI
- * flags, no re-invoking the model to reformat a --resume call.
+ * the literal `/create-feature` slash command. Never lets the deterministic
+ * pipeline run more than one step concurrently, and intercepts the user's
+ * next plain message when a build is awaiting a clarification answer, so
+ * replying is just "type in the chat" — no re-invoking the model to reformat
+ * a resume call.
  */
 export class FeatureBuildController {
   private pending: PendingFeatureBuild | null = null;
@@ -57,16 +65,15 @@ export class FeatureBuildController {
   }
 
   /**
-   * Never throws — a crash here (bad path, agentic-feature-loop itself
-   * erroring outside its own JSON-reporting convention) must never take the
-   * whole chat process down with it. Callers (the /create-feature prompt AND
-   * the model-invoked create_feature tool) can treat the return value as the
-   * whole story.
+   * Never throws — a crash here (bad path, a phase erroring outside its own
+   * status-reporting convention) must never take the whole chat process down
+   * with it. Callers (the /create-feature prompt AND the model-invoked
+   * create_feature tool) can treat the return value as the whole story.
    */
-  async start(args: FeatureBuildStartArgs): Promise<FeatureBuildStepResult> {
+  async start(args: FeatureBuildStartArgs): Promise<ControllerResult> {
     this.busy = true;
     try {
-      const result = await runFeatureBuildStep({ ...args, project: this.project, resume: false });
+      const result = await runFeatureBuildPipeline({ ...args, project: this.project, mode: args.mode ?? "interactive", resume: false });
       this.applyResult(args.featureSlug, result);
       return result;
     } catch (err) {
@@ -76,13 +83,14 @@ export class FeatureBuildController {
     }
   }
 
-  private async answer(answer: string): Promise<FeatureBuildStepResult> {
+  private async answer(answer: string): Promise<ControllerResult> {
     if (!this.pending) return hostFailure(new Error("no pending feature build awaiting an answer"));
     this.busy = true;
     try {
-      const result = await runFeatureBuildStep({
+      const result = await runFeatureBuildPipeline({
         featureSlug: this.pending.featureSlug,
         project: this.pending.project,
+        mode: "interactive",
         resume: true,
         answer,
       });
@@ -95,7 +103,7 @@ export class FeatureBuildController {
     }
   }
 
-  private applyResult(featureSlug: string, result: FeatureBuildStepResult): void {
+  private applyResult(featureSlug: string, result: FeatureBuildResult): void {
     this.pending = result.status === "needs_input" ? { featureSlug, project: this.project, awaitingAnswer: true } : null;
   }
 
@@ -112,7 +120,7 @@ export class FeatureBuildController {
     const functional = await this.ask("Path ke Functionality.md: ");
     const testCase = await this.ask("Path ke Test Case .md: ");
     const openapi = await this.ask("Path ke openapi.yaml: ");
-    print("\nMenjalankan agentic-feature-loop...\n");
+    print("\nMenjalankan feature-build pipeline...\n");
     const result = await this.start({ featureSlug, overview, uiDesign, functional, testCase, openapi });
     print(renderResult(result));
   }

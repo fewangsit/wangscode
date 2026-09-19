@@ -10,7 +10,7 @@ Usage:
 
 Starts an interactive chat session in the terminal. Behaves like a general
 coding assistant; type /create-feature to run the deterministic, gated
-feature-build pipeline (agentic-feature-loop) instead of freeform judgment.
+feature-build pipeline instead of freeform judgment.
 
 Run from the root of (or pass --project= pointing at) a project that follows
 the Wangs Foundation convention: packages/core, packages/infrastructure,

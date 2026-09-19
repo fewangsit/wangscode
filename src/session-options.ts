@@ -30,7 +30,8 @@ export function buildSessionOptions(
     },
     // Interactive terminal, a human is present — canUseTool prompts them
     // directly, so permissionMode stays "default" (not bypassPermissions,
-    // which is only correct for agentic-feature-loop's headless phases).
+    // which is only correct for the pipeline's own headless model phases —
+    // see pipeline/agent-runner.ts).
     permissionMode: "default",
     canUseTool,
   };
