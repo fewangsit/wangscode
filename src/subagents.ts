@@ -19,6 +19,16 @@ import type { AgentDefinition } from "@anthropic-ai/claude-agent-sdk";
 // @wangs-ui/mcp ships and releases in lockstep with the rest of the
 // @wangs-ui/* packages, so this is never a version behind whatever
 // component/prop set wangs-ui-querier is asked to look up.
+//
+// PREREQUISITE (deliberate, not an oversight): @wangs-ui/mcp is not on the
+// public npm registry (confirmed against registry.npmjs.org — 404). No
+// --registry= flag is hardcoded here on purpose: this project's own
+// .npmrc-driven registry resolution for the @wangs-ui scope is what makes
+// this resolve, exactly like every other @wangs-ui/* dependency a Wangs
+// Foundation project already needs. A stable private registry host (not a
+// LAN IP — those come and go) is the right thing to point @wangs-ui at; in
+// local dev, that's usually "build wangs-ui-react-main and publish it to a
+// local Verdaccio" rather than depending on an always-on private server.
 const WANGS_UI_MCP_SERVER = {
   "wangs-ui": {
     type: "stdio" as const,
