@@ -27,7 +27,11 @@ const RULES_DIR = path.join(PACKAGE_ROOT, "rules");
 
 const RULE_FILES = [
   "architecture-overview.md",
+  "packages.md",
   "feature-pattern.md",
+  "data-and-server-state.md",
+  "error-handling.md",
+  "cross-platform.md",
   "conventions.md",
   "react19-compiler-typescript.md",
   "typescript-strict-typing.md",
