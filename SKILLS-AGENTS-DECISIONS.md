@@ -141,6 +141,47 @@ dibundel) sudah eksplisit mewajibkan `t('...')` di tiap string user-facing — a
 tetap selalu ada di context; detail dalamnya (sintaks ICU, larangan dotted key, dll) tetap di
 skill `i18n-usage` yang discoverable via `@wangs-ui/skills`.
 
+## 10. Doc arsitektur (`docs/01-overview.md`, `03-feature-pattern.md`, `10-conventions.md`) — pindah jadi primary rules juga
+
+**Status: DIPUTUSKAN.** User bertanya balik: "kenapa 10 dokumen arsitektur ini malah ada di repo
+[target] itu sendiri? kenapa bukan bagian dari agent ini, karena agent ini ditujukan untuk
+menghasilkan kode sesuai arsitektur itu." Pertanyaan ini muncul setelah saya melaporkan
+`10-conventions.md` dirujuk skill `slicing-review` tapi tidak ada di `wangs-monorepo-foundation`.
+
+Bukti konkret yang langsung ditemukan sambil investigasi (bukan hipotetis): isi
+`wangs-monorepo-foundation/docs/01-overview.md` **masih** bilang selector cuma
+`aria-label`/`accessibilityLabel` — persis versi basi yang baru diperbaiki di skill `wangs-agent`
+beberapa commit sebelumnya (§ fix TestSpectra `title`/`aria-labelledby`). Dua sumber yang
+seharusnya konsisten sudah drift dalam hitungan menit. Konfirmasi juga: isi `01-overview.md` dan
+`03-feature-pattern.md` genuinely generik (pakai "catalog" sebagai contoh placeholder, scope
+`@wangs-foundation/*` ilustratif, nol konten spesifik bisnis) — tidak ada alasan itu harus tinggal
+per-proyek.
+
+Mekanisme akses (dikonfirmasi user): **disuntik ke system prompt**, sama seperti
+react19-compiler-typescript/typescript-strict-typing (§7) — bukan file yang di-`Read` model dari
+proyek target. `src/coding-rules.ts` diganti nama jadi `src/primary-rules.ts` (`CODING_RULES` →
+`PRIMARY_RULES`) karena cakupannya sekarang bukan cuma gaya coding, tapi juga arsitektur.
+
+Implementasi:
+
+- `rules/architecture-overview.md`, `rules/feature-pattern.md` — diadaptasi verbatim dari
+  `wangs-monorepo-foundation/docs/01-overview.md`/`03-feature-pattern.md`, sekalian diperbaiki
+  tabel selector-nya.
+- `rules/conventions.md` — **baru**, karena `wangs-monorepo-foundation` tidak pernah punya
+  `docs/10-conventions.md` meski dirujuk skill. Diadaptasi dari versi `tagsamurai-monorepo`
+  (`@tagsamurai/*` → scope ilustratif, referensi `.agents/AGENTS.md` dihapus).
+- Semua rujukan `docs/NN-*.md` di skill (`feature-workflow`, `design-system`, `slicing-review`)
+  dan `prompts.ts` diganti ke nama rule baru.
+
+**Sisi `wangs-monorepo-foundation`**: `docs/01-overview.md`/`03-feature-pattern.md` **tidak
+dihapus** — diubah jadi pointer singkat + ringkasan (bukan duplikat penuh), karena 8+ file kode
+produksi nyata (`FeatureGraphBuilder.ts`, `CatalogList.tsx`, `SystemStatus.tsx`, dst.) masih
+mengutip path itu di komentar; menghapusnya akan membuat referensi itu menggantung. Duplikat penuh
+juga sengaja dihindari — itu persis yang menyebabkan drift yang baru ditemukan. Ditemukan juga
+(dicatat, tidak diperbaiki — di luar cakupan): `CatalogList.tsx`/`SystemStatus.tsx` mengutip
+section "Top-Level Screens and Tabs Must Not Accept Props" yang tidak ada di versi manapun
+(termasuk sebelum migrasi ini) — referensi menggantung lama yang tidak terkait migrasi ini.
+
 ---
 
 ## Terbuka / belum ditindaklanjuti
