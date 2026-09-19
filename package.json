@@ -2,7 +2,6 @@
   "name": "wangs-agent",
   "version": "0.3.1",
   "description": "Standalone interactive terminal chat CLI for Wangs Foundation projects, built on the Claude Agent SDK. Behaves like a general-purpose coding agent for everyday work; routes end-to-end feature builds through its own deterministic, gated pipeline (real command gates, never model self-judgment) instead of freeform agent judgment.",
-  "type": "module",
   "license": "MIT",
   "bin": {
     "wangs-agent": "./dist/cli.mjs"
@@ -11,6 +10,7 @@
     "dist",
     "wangs-plugin"
   ],
+  "type": "module",
   "exports": {
     ".": {
       "types": "./dist/index.d.mts",
@@ -21,6 +21,8 @@
     "build": "tsdown",
     "type-check": "tsc --noEmit",
     "lint": "oxlint src",
+    "format": "oxfmt --write .",
+    "format:check": "oxfmt --check .",
     "dev": "tsx src/cli.ts"
   },
   "dependencies": {
@@ -29,6 +31,7 @@
   },
   "devDependencies": {
     "@types/node": "^24.13.3",
+    "oxfmt": "^0.68.0",
     "oxlint": "^1.75.0",
     "tsdown": "^0.22.14",
     "tsx": "^4.23.13",

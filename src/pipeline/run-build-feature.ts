@@ -17,12 +17,7 @@ import { runGate } from "./gates.ts";
 import { detectPackageScope } from "./project-conventions.ts";
 import { buildPhasePrompt } from "./prompts.ts";
 import { runRequirementsPhase } from "./requirements-phase.ts";
-import {
-  pageObjectContractJsonSchema,
-  pageObjectContractZod,
-  reviewFindingsJsonSchema,
-  reviewFindingsZod,
-} from "./schemas.ts";
+import { pageObjectContractJsonSchema, pageObjectContractZod, reviewFindingsJsonSchema, reviewFindingsZod } from "./schemas.ts";
 import { initState, loadState, saveState } from "./state.ts";
 import {
   MODEL_PHASES,
@@ -96,8 +91,7 @@ async function runOnePhase(
     const gate = runGate(phase, { repoRoot: ctx.repoRoot, featureSlug: ctx.args.featureSlug });
     if (gate.ok) return { ok: true };
     const classification =
-      gate.classification ??
-      (phase === "lint" ? classifyLintFailure(gate.failureReport ?? "", ctx.args.featureSlug) : undefined);
+      gate.classification ?? (phase === "lint" ? classifyLintFailure(gate.failureReport ?? "", ctx.args.featureSlug) : undefined);
     return { ok: false, failureReport: gate.failureReport, classification };
   }
 
@@ -151,11 +145,7 @@ async function runOnePhase(
   }
 
   // data-layer, ui-slice, connect: gate is a real command, run it now.
-  const gate = runGate(
-    phase,
-    { repoRoot: ctx.repoRoot, featureSlug: ctx.args.featureSlug },
-    state.artifacts["test-contract"],
-  );
+  const gate = runGate(phase, { repoRoot: ctx.repoRoot, featureSlug: ctx.args.featureSlug }, state.artifacts["test-contract"]);
   return gate.ok ? { ok: true } : { ok: false, failureReport: gate.failureReport, classification: gate.classification };
 }
 
@@ -283,9 +273,7 @@ export async function runFeatureBuildPipeline(args: FeatureBuildArgs): Promise<F
     // CODE_PHASES.indexOf("requirements") is -1, always < targetIndex) and
     // must never be un-completed by a code-phase retry/rewind — otherwise
     // every later-phase retry forces a full, redundant gap-check re-run.
-    state.completedPhases = state.completedPhases.filter(
-      (p) => p === "requirements" || CODE_PHASES.indexOf(p) < targetIndex,
-    );
+    state.completedPhases = state.completedPhases.filter((p) => p === "requirements" || CODE_PHASES.indexOf(p) < targetIndex);
     saveState(repoRoot, args.featureSlug, state);
     cursor = targetIndex;
   }

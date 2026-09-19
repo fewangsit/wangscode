@@ -28,20 +28,20 @@ A component has one responsibility when it (1) renders one visual concept, (2) h
 
 If **any** answer is YES, extract the component:
 
-| # | Question |
-|---|---|
-| Q1 | Does this JSX block do more than one visual thing? |
-| Q2 | Is it longer than ~40 lines? |
-| Q3 | Could it appear on a different screen unchanged? |
-| Q4 | Does it contain a hook beyond `vm.*`? (Business logic leaking into the View — extract AND move the logic to the ViewModel) |
+| #   | Question                                                                                                                   |
+| --- | -------------------------------------------------------------------------------------------------------------------------- |
+| Q1  | Does this JSX block do more than one visual thing?                                                                         |
+| Q2  | Is it longer than ~40 lines?                                                                                               |
+| Q3  | Could it appear on a different screen unchanged?                                                                           |
+| Q4  | Does it contain a hook beyond `vm.*`? (Business logic leaking into the View — extract AND move the logic to the ViewModel) |
 
 ## 4. Placement
 
-| Component type | Location |
-|---|---|
-| Used by one feature only | `packages/features/[feature]/ui/components/` |
+| Component type               | Location                                                                                   |
+| ---------------------------- | ------------------------------------------------------------------------------------------ |
+| Used by one feature only     | `packages/features/[feature]/ui/components/`                                               |
 | Used by two or more features | `packages/core/ui/components/` (purely presentational — no feature-specific types/strings) |
-| Screen root (route entry) | `packages/features/[feature]/ui/screens/[Screen]/[Screen].tsx` |
+| Screen root (route entry)    | `packages/features/[feature]/ui/screens/[Screen]/[Screen].tsx`                             |
 
 ## 5. Props Contract Before Writing
 
@@ -49,10 +49,20 @@ Define the prop `interface` before the JSX. Ready to extract when: 1–5 typed f
 
 ```tsx
 // Ready
-interface RowProps { name: string; email: string; onEdit: () => void; }
+interface RowProps {
+  name: string;
+  email: string;
+  onEdit: () => void;
+}
 
 // NOT ready — raw DTO leaking, too many handlers
-interface RowProps { item: ItemDto; onEdit: () => void; onDelete: () => void; onToggle: () => void; onView: () => void; }
+interface RowProps {
+  item: ItemDto;
+  onEdit: () => void;
+  onDelete: () => void;
+  onToggle: () => void;
+  onView: () => void;
+}
 ```
 
 ## 6. Final Checklist
@@ -67,11 +77,11 @@ interface RowProps { item: ItemDto; onEdit: () => void; onDelete: () => void; on
 
 ## 7. Anti-Patterns to Reject
 
-| Anti-pattern | Fix |
-|---|---|
-| Component calls `useI18n()` | Resolve in ViewModel, pass string prop |
-| Component calls `useNavigate()` | Move to ViewModel handler |
-| Component imports a datasource | Remove; ViewModel fetches, passes resolved values |
-| Component has `isLoading`/`errorMessage` state | Move to ViewModel |
-| Two features share a component via direct import | Move to `packages/core/ui/components/` |
-| Splitting a 5-line block "for cleanliness" | Over-engineering — keep it inline |
+| Anti-pattern                                     | Fix                                               |
+| ------------------------------------------------ | ------------------------------------------------- |
+| Component calls `useI18n()`                      | Resolve in ViewModel, pass string prop            |
+| Component calls `useNavigate()`                  | Move to ViewModel handler                         |
+| Component imports a datasource                   | Remove; ViewModel fetches, passes resolved values |
+| Component has `isLoading`/`errorMessage` state   | Move to ViewModel                                 |
+| Two features share a component via direct import | Move to `packages/core/ui/components/`            |
+| Splitting a 5-line block "for cleanliness"       | Over-engineering — keep it inline                 |

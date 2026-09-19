@@ -21,9 +21,7 @@ import type { ClarificationRecord, GapReport, PipelineContext, PipelineState, Re
 function extract(state: PipelineState, clarifications: ClarificationRecord[]): RequirementBundle {
   const docPaths = state.docPaths;
   if (!docPaths) {
-    throw new Error(
-      "unreachable: state.docPaths must be set before the requirements phase runs — see run-build-feature.ts",
-    );
+    throw new Error("unreachable: state.docPaths must be set before the requirements phase runs — see run-build-feature.ts");
   }
   const { overview, uiDesign, functional, testCase, openapi } = docPaths;
   return {
@@ -63,10 +61,7 @@ export type RequirementsOutcome =
  * re-checks. See §4.1 of the architecture doc: this loop's gate is a human
  * decision, never a command exit code, in both interactive and auto mode.
  */
-export async function runRequirementsPhase(
-  ctx: PipelineContext,
-  state: PipelineState,
-): Promise<RequirementsOutcome> {
+export async function runRequirementsPhase(ctx: PipelineContext, state: PipelineState): Promise<RequirementsOutcome> {
   const bundle = extract(state, state.clarifications);
   const gapReport = await gapCheck(ctx, bundle);
 
@@ -79,7 +74,7 @@ export async function runRequirementsPhase(
     `Fase requirements menemukan ${unaccepted.length} celah pada dokumen:`,
     ...unaccepted.map((g) => `- [${g.id}] (${g.kind}) ${g.description} — sumber: ${g.sources.join(", ")}`),
     "",
-    "Jawab salah satu celah di atas (sebut ID-nya), atau ketik \"accept <ID>\" untuk melanjutkan meski celah itu dibiarkan.",
+    'Jawab salah satu celah di atas (sebut ID-nya), atau ketik "accept <ID>" untuk melanjutkan meski celah itu dibiarkan.',
   ].join("\n");
 
   return { done: false, pendingQuestion: question, gapReport };

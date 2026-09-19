@@ -3,27 +3,12 @@
 // process, no subprocess boundary. This file has no behavior of its own,
 // only the shapes shared across the other pipeline modules.
 
-export const PHASES = [
-  "requirements",
-  "data-layer",
-  "test-contract",
-  "ui-slice",
-  "connect",
-  "e2e-run",
-  "lint",
-  "review",
-] as const;
+export const PHASES = ["requirements", "data-layer", "test-contract", "ui-slice", "connect", "e2e-run", "lint", "review"] as const;
 
 export type PhaseName = (typeof PHASES)[number];
 
 /** Phases that call the model. e2e-run and lint are gate-only — see gates.ts. */
-export const MODEL_PHASES = [
-  "data-layer",
-  "test-contract",
-  "ui-slice",
-  "connect",
-  "review",
-] as const satisfies readonly PhaseName[];
+export const MODEL_PHASES = ["data-layer", "test-contract", "ui-slice", "connect", "review"] as const satisfies readonly PhaseName[];
 
 export type Mode = "interactive" | "auto";
 

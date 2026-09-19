@@ -102,11 +102,7 @@ After writing the files, respond with ONLY the JSON object described by the outp
 selector contract for the primary screen you just authored. No prose, no markdown fences.`;
 }
 
-export function buildUiSlicePrompt(
-  featureSlug: string,
-  bundle: RequirementBundle,
-  contract: PageObjectContract,
-): string {
+export function buildUiSlicePrompt(featureSlug: string, bundle: RequirementBundle, contract: PageObjectContract): string {
   return `Follow the \`feature-workflow\` skill's Step 3 (UI Slice), the \`design-system\` skill, and the \`component-spliting\` skill exactly.
 
 Feature: "${featureSlug}" at packages/features/${featureSlug}/

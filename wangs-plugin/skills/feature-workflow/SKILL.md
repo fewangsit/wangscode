@@ -19,7 +19,7 @@ Use this skill whenever a new feature is built from scratch, or a complete slice
 1. Data layer  →  2. Test contract (Page Object + skeleton test)  →  3. UI slice  →  4. Connect
 ```
 
-**Why Test comes before UI, not after:** the Page Object produced in step 2 is a *selector contract* the UI must fulfill — every accessible-name selector (`~name`, see below) declared there must exist on the rendered component. Writing UI first and testing after inverts that contract and is exactly the pattern that produces inconsistent selectors/structure across developers. Only the **authoring** of the test moves earlier — actually *running* it still happens last (step 5), since it needs the UI in place.
+**Why Test comes before UI, not after:** the Page Object produced in step 2 is a _selector contract_ the UI must fulfill — every accessible-name selector (`~name`, see below) declared there must exist on the rendered component. Writing UI first and testing after inverts that contract and is exactly the pattern that produces inconsistent selectors/structure across developers. Only the **authoring** of the test moves earlier — actually _running_ it still happens last (step 5), since it needs the UI in place.
 
 ```
 5. Run e2e (network-intercepted)  →  6. Lint & type-check  →  7. Review
@@ -34,12 +34,14 @@ Use this skill whenever a new feature is built from scratch, or a complete slice
 **Inputs required**: OpenAPI YAML spec. If not provided, stop and ask — never proceed from assumptions.
 
 **Outputs**:
+
 - `features/*/data/dto/index.ts` — request/response types, one source comment per type
 - `features/*/data/datasource/[Feature]RemoteDataSource.ts` — pure async functions
 
 Fixtures (`features/*/e2e/fixtures/*.json`) are authored in Step 2, not here — see below.
 
 **Data Sources protocol** (`features/*/data/`):
+
 - **OpenAPI spec required.** Never write a DTO or DataSource function from assumptions — every type must trace back to a request/response shape in the provided OpenAPI YAML. If no spec is provided, stop and ask.
 - **DTO = entity type.** There is no separate model/entity file. The type defined in `data/dto/index.ts` is the exact, only type used by the DataSource, the ViewModel, and the View. Do not rename fields, do not add a mapping layer "for clarity" — one type travels across every layer.
 - Each DTO file/type includes a source comment: `// Source: POST /api/v1/resource — openapi.yaml`.
@@ -58,8 +60,9 @@ testing, following its Nx-monorepo convention exactly.
 **Inputs required**: Test Case `.md`, read via the `test-case-reader` subagent (never inline).
 
 **Outputs**, under `features/*/e2e/` (a project of its own, separate from the feature library package):
+
 - `e2e/project.json` — registers the Nx project (`projectType: application`, `tags:
-  ["testspectra:e2e", "testspectra:scope:feature-<slug>"]`, `targets.e2e` running `spectra run` via
+["testspectra:e2e", "testspectra:scope:feature-<slug>"]`, `targets.e2e` running `spectra run` via
   `nx:run-commands`, with `android`/`ios`/`headless` configurations)
 - `e2e/page-objects/[Screen]Page/web.ts` — one Page Object class per screen (default-exported
   singleton), one getter per element via `Spectra.get('~name')`
@@ -70,10 +73,10 @@ testing, following its Nx-monorepo convention exactly.
 
 **Selector rule (mandatory — see `docs/03-feature-pattern.md`):**
 
-| Selector | Meaning | Web attribute | React Native attribute | When to use |
-|---|---|---|---|---|
-| `~name` | accessibility id | `aria-label` | `accessibilityLabel` | **Default.** Anything a user can perceive. |
-| `#name` | native id | `id` / `data-testid` is NOT used here — use `id` | `testID` | Only when the element genuinely has no accessible name (rare — confirm via `wangs-ui-querier`, never assume). |
+| Selector | Meaning          | Web attribute                                    | React Native attribute | When to use                                                                                                   |
+| -------- | ---------------- | ------------------------------------------------ | ---------------------- | ------------------------------------------------------------------------------------------------------------- |
+| `~name`  | accessibility id | `aria-label`                                     | `accessibilityLabel`   | **Default.** Anything a user can perceive.                                                                    |
+| `#name`  | native id        | `id` / `data-testid` is NOT used here — use `id` | `testID`               | Only when the element genuinely has no accessible name (rare — confirm via `wangs-ui-querier`, never assume). |
 
 Never author a selector against `data-testid`. It only serves the test; `aria-label`/`accessibilityLabel` serves the test **and** the screen reader, which is the entire point of this rule.
 
@@ -101,6 +104,7 @@ The test scripts will not pass yet at this point (no UI exists) — that is expe
 **Inputs required**: `UI Design.md` (via `ui-design-reader`), `Functionality.md` (via `functional-reader`), Overview (via generic `research` subagent) — all three in parallel — plus the DTO from Step 1 and the Page Object from Step 2.
 
 **Outputs**:
+
 - `features/*/ui/screens/[Screen]/use[Screen]ViewModel.ts`
 - `features/*/ui/screens/[Screen]/[Screen].tsx` (and `.native.tsx` only if a mobile target actually exists for this project — do not create speculative native files)
 - Sub-components under `features/*/ui/components/` per the `component-spliting` skill
@@ -129,23 +133,23 @@ Verify: DataSource is imported only from the ViewModel (never the View), no `try
 
 ## Cross-Layer Contracts (Mandatory)
 
-| Contract | From → To | Rule |
-|---|---|---|
-| DTO = entity type | Data → everywhere | No separate model type is ever created. |
-| Selector fulfillment | Test Contract → UI | Every `~name`/`#name` in the Page Object exists as `aria-label`/`accessibilityLabel`/`id`/`testID` on the rendered component. |
-| Fixture ↔ DataSource shape | Data → Test | Fixtures match exactly what the DataSource function returns. |
+| Contract                   | From → To          | Rule                                                                                                                          |
+| -------------------------- | ------------------ | ----------------------------------------------------------------------------------------------------------------------------- |
+| DTO = entity type          | Data → everywhere  | No separate model type is ever created.                                                                                       |
+| Selector fulfillment       | Test Contract → UI | Every `~name`/`#name` in the Page Object exists as `aria-label`/`accessibilityLabel`/`id`/`testID` on the rendered component. |
+| Fixture ↔ DataSource shape | Data → Test        | Fixtures match exactly what the DataSource function returns.                                                                  |
 
 ---
 
 ## Subagent Dispatch Reference
 
-| Task | Subagent |
-|---|---|
-| Read `UI Design.md` | `ui-design-reader` |
-| Read `Functionality.md` | `functional-reader` |
-| Read `Overview.md` | generic `research` |
-| Read Test Case `.md` | `test-case-reader` |
-| Query wangs-ui MCP (any component) | `wangs-ui-querier` |
+| Task                               | Subagent            |
+| ---------------------------------- | ------------------- |
+| Read `UI Design.md`                | `ui-design-reader`  |
+| Read `Functionality.md`            | `functional-reader` |
+| Read `Overview.md`                 | generic `research`  |
+| Read Test Case `.md`               | `test-case-reader`  |
+| Query wangs-ui MCP (any component) | `wangs-ui-querier`  |
 
 Each PRD/spec document is read inside its own dedicated subagent — never inline in the main turn, never two documents in one subagent call. All four documentation subagents may run in parallel (they are independent) — spawn them in the same turn, not sequentially, unless one genuinely depends on another's output. `wangs-ui-querier` gets its own isolated invocation per query session — never combined with a documentation read.
 

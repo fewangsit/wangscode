@@ -21,11 +21,7 @@ const WANGS_PLUGIN_ROOT = path.join(PACKAGE_ROOT, "wangs-plugin");
 // preset-append (both confirmed real shapes in sdk.d.ts) are what let this
 // chat "behave broadly like Claude Code" without hand-rewriting its default
 // tool-use/safety framing — see the approved plan, section 5.
-export function buildSessionOptions(
-  cwd: string,
-  canUseTool: CanUseTool,
-  featureBuildController: FeatureBuildController,
-): Options {
+export function buildSessionOptions(cwd: string, canUseTool: CanUseTool, featureBuildController: FeatureBuildController): Options {
   return {
     cwd,
     model: "claude-sonnet-5",

@@ -5,7 +5,7 @@ description: Structural rules for using Wangs UI consistently across Web (and, o
 
 # Skill: Design System Usage (Foundation Template)
 
-Use this skill whenever you write, slice, refactor, or style a component/screen. This file is the **structural** source of truth — token usage, layout hierarchy, component primitive standards, cross-platform assumptions. It is deliberately generic: business-specific copy (empty-state wording, entity-specific column orders, brand strings) belongs in the *consuming project's* own skill/doc, layered on top of this one, not baked in here.
+Use this skill whenever you write, slice, refactor, or style a component/screen. This file is the **structural** source of truth — token usage, layout hierarchy, component primitive standards, cross-platform assumptions. It is deliberately generic: business-specific copy (empty-state wording, entity-specific column orders, brand strings) belongs in the _consuming project's_ own skill/doc, layered on top of this one, not baked in here.
 
 ---
 
@@ -66,10 +66,10 @@ Query `wangs-ui-querier` before using any prop you haven't verified — this app
 
 Every interactive or otherwise perceivable element must carry a real accessible name:
 
-| Platform | Attribute | Selector prefix (e2e) |
-|---|---|---|
-| Web | `aria-label` | `~name` |
-| React Native | `accessibilityLabel` | `~name` |
+| Platform     | Attribute            | Selector prefix (e2e) |
+| ------------ | -------------------- | --------------------- |
+| Web          | `aria-label`         | `~name`               |
+| React Native | `accessibilityLabel` | `~name`               |
 
 This is not a testing convenience layered on top of the design system — it **is** the design system's a11y baseline, and it happens to also be what the e2e Page Object contract (`docs/03-feature-pattern.md`) is built on. One attribute, two purposes. Never add a `data-testid`/`testID`-only attribute as a substitute — if a component has no accessible-name prop, confirm that via `wangs-ui-querier` first (don't assume), and only then fall back to `id`/`testID` (`#name` selector).
 
@@ -83,4 +83,4 @@ Once this foundation is used for a real project, extend — don't rewrite — th
 - The project's canonical table column ordering, empty-state copy, dialog button conventions, etc.
 - Any component usage patterns specific to that project's domain
 
-Keep those additions in the consuming project's own docs, not in this template, so this file stays reusable for the *next* project too.
+Keep those additions in the consuming project's own docs, not in this template, so this file stays reusable for the _next_ project too.

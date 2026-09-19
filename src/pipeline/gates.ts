@@ -125,9 +125,7 @@ export function checkSelectorContract(repoRoot: string, contract: PageObjectCont
   const missing: string[] = [];
   for (const sel of contract.requiredSelectors) {
     const patterns =
-      sel.kind === "a11y"
-        ? [`aria-label="${sel.name}"`, `accessibilityLabel="${sel.name}"`]
-        : [`id="${sel.name}"`, `testID="${sel.name}"`];
+      sel.kind === "a11y" ? [`aria-label="${sel.name}"`, `accessibilityLabel="${sel.name}"`] : [`id="${sel.name}"`, `testID="${sel.name}"`];
     if (!patterns.some((p) => grepRecursive(uiDir, p))) missing.push(`${sel.kind}:${sel.name}`);
   }
   return missing.length === 0
@@ -174,16 +172,10 @@ export function checkDependencyRules(repoRoot: string, featureSlug: string): Gat
     }
   }
 
-  return violations.length === 0
-    ? { ok: true }
-    : { ok: false, failureReport: violations.join("\n"), classification: "connect" };
+  return violations.length === 0 ? { ok: true } : { ok: false, failureReport: violations.join("\n"), classification: "connect" };
 }
 
-export function runGate(
-  phase: PhaseName,
-  ctx: { repoRoot: string; featureSlug: string },
-  artifact?: unknown,
-): GateResult {
+export function runGate(phase: PhaseName, ctx: { repoRoot: string; featureSlug: string }, artifact?: unknown): GateResult {
   switch (phase) {
     case "requirements":
       return { ok: true }; // gated by the internal gap-check loop itself, not here
