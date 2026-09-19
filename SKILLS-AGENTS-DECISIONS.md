@@ -203,6 +203,34 @@ Diverifikasi nyata (bukan cuma type-check): fixture dengan folder `model/` sungg
 (butuh hitung jumlah screen pemakai, bukan sekadar exists-check) dan belum ada fitur nyata yang
 memakai skema validator baru, jadi belum ada bukti butuh.
 
+## 12. 4 doc arsitektur tersisa dibundel (`packages`, `data-and-server-state`, `error-handling`, `cross-platform`); 3 lainnya sengaja tidak
+
+**Status: DIPUTUSKAN.** Melanjutkan §10 — user tanya balik kemana perginya `docs/04` sampai `09`
+tagsamurai yang belum pernah saya nilai. Semua 8 file sisa (`02`, `04`–`09`, `README`) dibaca
+penuh, dinilai satu-satu, dipilih user untuk eksekusi 4 yang paling aman dulu.
+
+**Dibundel** (`rules/packages.md`, `rules/data-and-server-state.md`, `rules/error-handling.md`,
+`rules/cross-platform.md`) — genuinely generik, tidak konflik dengan kode nyata, melengkapi
+`architecture-overview`/`feature-pattern` dengan detail yang belum ada di sana.
+
+**Sengaja TIDAK dibundel:**
+
+- `05-authentication.md` — strategi auth spesifik (HTTP-only cookie), bukan konvensi Wangs
+  Foundation yang terkonfirmasi; belum ada fitur auth nyata di `wangs-monorepo-foundation` sebagai
+  bukti. Perlu keputusan eksplisit dulu, bukan diasumsikan.
+- `06-navigation.md` — **ditemukan bug nyata kalau dipaksa pindah**: API `useNavigation()` +
+  `FeatureGraphBuilder` tagsamurai (nested sub-builder, `.getRoutes()`) tidak cocok dengan
+  implementasi asli di `wangs-monorepo-foundation/packages/infrastructure/navigation/FeatureGraphBuilder.ts`
+  yang jauh lebih sederhana (`composable(path, component): void`, `build(): RouteEntry[]`).
+  Memindahkan versi tagsamurai akan mengajarkan API yang salah ke pipeline. Kalau mau dibuat rule
+  navigasi, harus ditulis ulang dari kode asli, bukan disalin.
+- `09-build-and-caching.md` — soal setup package/build baru (Nx graph, export conditions), bukan
+  hal yang disentuh fase pipeline manapun (`data-layer`/`ui-slice`/`connect` bekerja di struktur
+  yang sudah ada).
+- `README.md` — cuma daftar isi + heuristik baca-berurutan untuk manusia; tidak relevan lagi
+  karena semua rule sudah unconditionally ada di context, tidak ada "urutan baca" yang perlu
+  dijaga.
+
 ---
 
 ## Terbuka / belum ditindaklanjuti
@@ -216,6 +244,10 @@ Hal-hal yang sudah diajukan tapi user belum memutuskan — jangan diasumsikan di
   ini sekarang (lihat prinsip "jangan desain untuk kasus hipotetis").
 - **§6 di atas** (bundel 8 skill `@wangs-ui/skills`) — rekomendasi "jangan" sudah diberikan,
   belum ada konfirmasi final.
+- **`05-authentication.md`** (§12) — belum diputuskan apa strategi HTTP-only cookie ini memang
+  standar Wangs Foundation atau spesifik tagsamurai. Butuh jawaban eksplisit sebelum dibundel.
+- **`06-navigation.md`** (§12) — kalau mau ada rule navigasi, harus ditulis ulang dari
+  `FeatureGraphBuilder.ts` yang asli, bukan disalin dari tagsamurai. Belum dikerjakan.
 - **§9 di atas** (`i18n-usage` naik jadi primary rule) — rekomendasi "jangan, tetap eksternal"
   sudah diberikan, belum ada konfirmasi final.
 
