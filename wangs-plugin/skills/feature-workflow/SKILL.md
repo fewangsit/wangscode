@@ -109,7 +109,17 @@ The test scripts will not pass yet at this point (no UI exists) — that is expe
 - `features/*/ui/screens/[Screen]/[Screen].tsx` (and `.native.tsx` only if a mobile target actually exists for this project — do not create speculative native files)
 - Sub-components under `features/*/ui/components/` per the `component-spliting` skill
 - `features/*/resources/Strings.ts`
-- Form validators, if any, co-located with the screen that uses them (there is no separate `model/validators/` folder)
+- Form validators, placed per the table below
+
+**Validator placement (mandatory — same three-tier logic as the `component-spliting` skill's placement table, applied to validators instead of components):**
+
+| Scope                                                                                           | Location                                 |
+| ----------------------------------------------------------------------------------------------- | ---------------------------------------- |
+| Used by exactly one screen (that screen's Web and Native views already live in the same folder) | co-located inside `ui/screens/[Screen]/` |
+| Used by multiple screens within this feature only                                               | `features/*/ui/validators/`              |
+| Used by two or more features                                                                    | `packages/core/ui/validators/`           |
+
+Validators built from `@wangs-ui/form/core`'s `Validator<T>` are pure functions — no React, no platform-specific import — so they travel unchanged wherever they're imported from, the same way the DTO travels unchanged across Data → ViewModel → View. That's exactly the single-source-of-truth need a `model/` folder used to (partly) serve — the table above is where that need actually belongs now; it is not a reason to bring a `model/` folder back.
 
 **Mandatory**: every sliced section must comply with the `design-system` skill. Query `wangs-ui-querier` before writing any `@wangs-ui` component — never assume a prop, especially the accessible-name prop needed for Step 2's contract.
 
