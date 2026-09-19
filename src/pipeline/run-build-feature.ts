@@ -41,9 +41,9 @@ const PHASE_TOOL_ALLOWLIST: Record<(typeof MODEL_PHASES)[number], string[]> = {
   "data-layer": ["Read", "Write", "Edit", "Glob", "Grep", "Bash"],
   "test-contract": ["Read", "Write", "Edit", "Glob", "Grep"],
   // "Agent" is the real SDK tool name for subagent dispatch (verified against
-  // a live session reporting its own tool list) — the wangs-ui-querier
-  // subagent itself is auto-discovered from the target project's
-  // .claude/agents/wangs-ui-querier.md, not registered here.
+  // a live session reporting its own tool list) — wangs-ui-querier itself is
+  // registered programmatically via agent-runner.ts's Options.agents (see
+  // ../subagents.ts), not read from any file in the target project.
   "ui-slice": ["Read", "Write", "Edit", "Glob", "Grep", "Agent"],
   connect: ["Read", "Write", "Edit", "Glob", "Grep"],
   review: ["Read", "Glob", "Grep"],
