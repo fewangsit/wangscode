@@ -13,10 +13,17 @@ import type { AgentDefinition } from "@anthropic-ai/claude-agent-sdk";
 // This makes "no inline MCP calls" a structural fact (the main model's tool
 // list never contains mcp__wangs-ui__* to begin with) rather than a prompt
 // rule the model has to remember to follow.
+//
+// Launched via `npx -y @wangs-ui/mcp@latest`, matching the canonical template
+// at wangs-ui-react's packages/create-react-app/template/agents/mcp.json —
+// @wangs-ui/mcp ships and releases in lockstep with the rest of the
+// @wangs-ui/* packages, so this is never a version behind whatever
+// component/prop set wangs-ui-querier is asked to look up.
 const WANGS_UI_MCP_SERVER = {
   "wangs-ui": {
-    type: "http" as const,
-    url: "https://feat-open-design--6a3ac065a0f08984a65add65.chromatic.com/mcp",
+    type: "stdio" as const,
+    command: "npx",
+    args: ["-y", "@wangs-ui/mcp@latest"],
   },
 };
 
