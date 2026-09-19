@@ -117,6 +117,30 @@ mewarisi skill level akun developer yang menjalankannya (`settingSources` tidak 
 graphify ter-install di mesinnya sendiri, padahal itu murni setup personal, bukan sesuatu
 yang Wangs Foundation proyek-nya syaratkan.
 
+## 9. `i18n-usage` — TIDAK naik jadi primary rule, tetap skill eksternal
+
+**Status: TERBUKA — rekomendasi sudah diberikan, belum ada konfirmasi eksplisit dari user.**
+
+Ditanya user: setelah react19-compiler-typescript & typescript-strict-typing naik status jadi
+_primary rules_ (§7), apa `i18n-usage` juga perlu naik status yang sama? Rekomendasi saya:
+**tidak** — tetap di kelompok §6 (skill eksternal `@wangs-ui/skills`, bukan dibundel).
+
+Garis pembeda yang dipakai (bukan "seberapa sering dipakai" — i18n hampir selalu relevan,
+tiap screen punya teks user-facing — tapi **siapa pemilik kontennya**):
+
+- react19-compiler-typescript & typescript-strict-typing: disiplin TypeScript/React murni,
+  tetap berlaku walau proyeknya nol komponen Wangs UI.
+- `i18n-usage`: seluruhnya tentang API `@wangs-ui/react-i18n` spesifik (`useI18n()`,
+  `useLocaleFormatter()`, `WangsUiI18nProvider`, backend JIT) — kategori sama dengan
+  `data-table`/`dialog-modal`, dimiliki & dirilis tim Wangs UI React, bukan `wangs-agent`.
+  Risiko sama seperti §6: `wangs-agent` harus ikut rilis ulang tiap `@wangs-ui/react-i18n`
+  berubah API, untuk konten yang bukan miliknya.
+
+Jaring pengaman yang sudah ada tanpa perlu bundling penuh: skill `design-system` (sudah
+dibundel) sudah eksplisit mewajibkan `t('...')` di tiap string user-facing — aturan dasarnya
+tetap selalu ada di context; detail dalamnya (sintaks ICU, larangan dotted key, dll) tetap di
+skill `i18n-usage` yang discoverable via `@wangs-ui/skills`.
+
 ---
 
 ## Terbuka / belum ditindaklanjuti
@@ -130,6 +154,8 @@ Hal-hal yang sudah diajukan tapi user belum memutuskan — jangan diasumsikan di
   konkretnya.
 - **§6 di atas** (bundel 8 skill `@wangs-ui/skills`) — rekomendasi "jangan" sudah diberikan,
   belum ada konfirmasi final.
+- **§9 di atas** (`i18n-usage` naik jadi primary rule) — rekomendasi "jangan, tetap eksternal"
+  sudah diberikan, belum ada konfirmasi final.
 
 ## Dibatalkan
 
