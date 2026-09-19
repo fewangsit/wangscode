@@ -1,0 +1,5 @@
+{
+  "name": "wangs-foundation",
+  "version": "0.3.0",
+  "description": "Wangs Foundation project-specific skills, bundled with wangs-agent so consumer repos need zero .claude/skills config for these."
+}

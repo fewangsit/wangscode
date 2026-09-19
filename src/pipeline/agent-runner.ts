@@ -5,6 +5,8 @@
 // code the model cannot talk its way around.
 import { query, type Options } from "@anthropic-ai/claude-agent-sdk";
 
+import { WANGS_SUBAGENTS } from "../subagents.ts";
+
 export interface RunAgentTurnParams {
   repoRoot: string;
   prompt: string;
@@ -26,6 +28,11 @@ export async function runAgentTurn(params: RunAgentTurnParams): Promise<AgentTur
     cwd: params.repoRoot,
     model: params.model ?? "claude-sonnet-5",
     allowedTools: params.allowedTools,
+    // Only reachable when the caller's allowedTools includes "Agent" (today,
+    // only the ui-slice phase) — registering it unconditionally here is
+    // harmless for every other phase and keeps this one place in sync with
+    // subagents.ts instead of re-deciding per phase.
+    agents: WANGS_SUBAGENTS,
     // Headless CLI orchestrator — there is no terminal for interactive
     // approval prompts. The real safety boundary is `allowedTools` above,
     // scoped per phase by the caller (see run.ts's PHASE_TOOL_ALLOWLIST).
