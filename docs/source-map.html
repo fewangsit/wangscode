@@ -1,0 +1,1474 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Wangs Agent Source Map</title>
+    <style>
+      @import url("https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap");
+
+      :root {
+        --paper: #eef1f0;
+        --paper-raised: #e3e9e7;
+        --ink: #1b2a2e;
+        --ink-soft: #4a5c5c;
+        --line: #b9c4c2;
+        --line-soft: #d3dbd9;
+        --accent: #b5622a;
+        --accent-ink: #ffffff;
+        --accent2: #2e6e62;
+        --code-bg: #e5eae8;
+        --shadow: 0 1px 0 rgba(27, 42, 46, 0.06);
+        --font-display: "IBM Plex Mono", ui-monospace, "SF Mono", Consolas, monospace;
+        --font-body: "IBM Plex Sans", -apple-system, "Segoe UI", sans-serif;
+        --font-mono: "IBM Plex Mono", ui-monospace, "SF Mono", Consolas, monospace;
+      }
+
+      @media (prefers-color-scheme: dark) {
+        :root:not([data-theme="light"]) {
+          --paper: #0f1c1f;
+          --paper-raised: #152426;
+          --ink: #dceae6;
+          --ink-soft: #93aba6;
+          --line: #29403f;
+          --line-soft: #1c3130;
+          --accent: #e08a4f;
+          --accent-ink: #14100b;
+          --accent2: #5fbfa8;
+          --code-bg: #0b1719;
+          --shadow: 0 1px 0 rgba(0, 0, 0, 0.3);
+        }
+      }
+
+      :root[data-theme="dark"] {
+        --paper: #0f1c1f;
+        --paper-raised: #152426;
+        --ink: #dceae6;
+        --ink-soft: #93aba6;
+        --line: #29403f;
+        --line-soft: #1c3130;
+        --accent: #e08a4f;
+        --accent-ink: #14100b;
+        --accent2: #5fbfa8;
+        --code-bg: #0b1719;
+        --shadow: 0 1px 0 rgba(0, 0, 0, 0.3);
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+      ::selection {
+        background: var(--accent);
+        color: var(--accent-ink);
+      }
+
+      body {
+        margin: 0;
+        background: var(--paper);
+        color: var(--ink);
+        font-family: var(--font-body);
+        line-height: 1.6;
+        -webkit-font-smoothing: antialiased;
+      }
+
+      a {
+        color: var(--accent2);
+      }
+
+      .shell {
+        display: grid;
+        grid-template-columns: 250px minmax(0, 1fr);
+        max-width: 1240px;
+        margin: 0 auto;
+      }
+
+      /* ---------- Nav rail ---------- */
+      nav.rail {
+        position: sticky;
+        top: 0;
+        align-self: start;
+        height: 100dvh;
+        overflow-y: auto;
+        padding: 28px 18px 40px 28px;
+        border-right: 1px solid var(--line-soft);
+      }
+      .rail-brand {
+        font-family: var(--font-display);
+        font-weight: 700;
+        font-size: 0.95rem;
+        letter-spacing: 0.02em;
+        display: flex;
+        align-items: baseline;
+        gap: 8px;
+        margin-bottom: 4px;
+      }
+      .rail-brand .ver {
+        font-size: 0.65rem;
+        color: var(--ink-soft);
+        font-weight: 500;
+      }
+      .rail-sub {
+        font-size: 0.72rem;
+        color: var(--ink-soft);
+        margin-bottom: 26px;
+      }
+      .rail-group {
+        margin-bottom: 22px;
+      }
+      .rail-label {
+        font-family: var(--font-mono);
+        font-size: 0.64rem;
+        letter-spacing: 0.09em;
+        text-transform: uppercase;
+        color: var(--ink-soft);
+        margin: 0 0 8px;
+      }
+      .rail ul {
+        list-style: none;
+        margin: 0;
+        padding: 0;
+      }
+      .rail li {
+        margin: 0;
+      }
+      .rail a.nav-link {
+        display: block;
+        font-family: var(--font-mono);
+        font-size: 0.78rem;
+        color: var(--ink);
+        text-decoration: none;
+        padding: 4px 8px 4px 10px;
+        border-left: 2px solid transparent;
+        opacity: 0.82;
+      }
+      .rail a.nav-link:hover {
+        border-left-color: var(--accent);
+        background: var(--paper-raised);
+        opacity: 1;
+      }
+
+      /* ---------- Main ---------- */
+      main {
+        padding: 44px clamp(20px, 4vw, 56px) 100px;
+        min-width: 0;
+      }
+
+      header.hero {
+        margin-bottom: 46px;
+        max-width: 700px;
+      }
+      .eyebrow {
+        font-family: var(--font-mono);
+        font-size: 0.72rem;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+        color: var(--accent);
+        margin: 0 0 14px;
+      }
+      h1 {
+        font-family: var(--font-display);
+        font-weight: 700;
+        font-size: clamp(1.8rem, 3.4vw, 2.5rem);
+        line-height: 1.15;
+        margin: 0 0 16px;
+        text-wrap: balance;
+      }
+      .hero p {
+        font-size: 1.02rem;
+        color: var(--ink-soft);
+        max-width: 62ch;
+        margin: 0 0 0;
+      }
+      .hero-meta {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin-top: 22px;
+      }
+      .chip {
+        font-family: var(--font-mono);
+        font-size: 0.7rem;
+        padding: 4px 10px;
+        border: 1px solid var(--line);
+        border-radius: 3px;
+        color: var(--ink-soft);
+      }
+
+      section.block {
+        margin: 64px 0;
+        max-width: 900px;
+      }
+      section.block.wide {
+        max-width: 100%;
+      }
+      h2 {
+        font-family: var(--font-display);
+        font-size: 1.3rem;
+        font-weight: 600;
+        margin: 0 0 6px;
+        text-wrap: balance;
+      }
+      h2 .num {
+        color: var(--accent);
+        margin-right: 10px;
+      }
+      .block-intro {
+        color: var(--ink-soft);
+        max-width: 68ch;
+        margin: 0 0 26px;
+      }
+      h3 {
+        font-family: var(--font-display);
+        font-size: 1.02rem;
+        font-weight: 600;
+        margin: 30px 0 10px;
+      }
+      p {
+        max-width: 68ch;
+      }
+      code {
+        font-family: var(--font-mono);
+        background: var(--code-bg);
+        padding: 0.1em 0.4em;
+        border-radius: 3px;
+        font-size: 0.88em;
+      }
+
+      /* ---------- diagram containers ---------- */
+      .diagram {
+        background: var(--paper-raised);
+        border: 1px solid var(--line-soft);
+        border-radius: 6px;
+        padding: 22px;
+        overflow-x: auto;
+        margin: 18px 0 8px;
+      }
+      .diagram-caption {
+        font-family: var(--font-mono);
+        font-size: 0.72rem;
+        color: var(--ink-soft);
+        margin: 8px 0 0;
+      }
+
+      /* ---------- layer map ---------- */
+      .layers {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+        gap: 16px;
+        margin: 24px 0;
+      }
+      .layer-card {
+        background: var(--paper-raised);
+        border: 1px solid var(--line-soft);
+        border-radius: 6px;
+        padding: 18px 18px 16px;
+      }
+      .layer-card .tag {
+        font-family: var(--font-mono);
+        font-size: 0.64rem;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: var(--accent2);
+        display: block;
+        margin-bottom: 8px;
+      }
+      .layer-card h4 {
+        font-family: var(--font-display);
+        font-size: 0.94rem;
+        margin: 0 0 8px;
+      }
+      .layer-card p {
+        font-size: 0.86rem;
+        color: var(--ink-soft);
+        margin: 0;
+        max-width: none;
+      }
+      .layer-card .files {
+        margin-top: 12px;
+        font-family: var(--font-mono);
+        font-size: 0.72rem;
+        color: var(--ink-soft);
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+      }
+      .layer-card .files span {
+        background: var(--code-bg);
+        padding: 2px 6px;
+        border-radius: 3px;
+      }
+
+      /* ---------- file spec sheets ---------- */
+      .filecard {
+        border: 1px solid var(--line-soft);
+        border-radius: 6px;
+        margin-bottom: 22px;
+        overflow: hidden;
+        background: var(--paper-raised);
+      }
+      .filecard summary {
+        cursor: pointer;
+        padding: 14px 18px;
+        display: flex;
+        align-items: baseline;
+        gap: 12px;
+        flex-wrap: wrap;
+        list-style: none;
+      }
+      .filecard summary::-webkit-details-marker {
+        display: none;
+      }
+      .filecard summary::before {
+        content: "▸";
+        color: var(--accent);
+        font-size: 0.8rem;
+        margin-right: 2px;
+        transition: transform 0.15s ease;
+      }
+      .filecard[open] summary::before {
+        transform: rotate(90deg);
+      }
+      .filecard .fname {
+        font-family: var(--font-mono);
+        font-weight: 600;
+        font-size: 0.88rem;
+        color: var(--ink);
+      }
+      .filecard .frole {
+        font-size: 0.82rem;
+        color: var(--ink-soft);
+      }
+      .filecard .floc {
+        margin-left: auto;
+        font-family: var(--font-mono);
+        font-size: 0.68rem;
+        color: var(--ink-soft);
+        white-space: nowrap;
+      }
+      .filecard-body {
+        padding: 4px 18px 18px;
+        border-top: 1px solid var(--line-soft);
+      }
+      .filecard-note {
+        font-size: 0.85rem;
+        color: var(--ink-soft);
+        margin: 12px 0 16px;
+        max-width: 66ch;
+      }
+
+      table.fn-table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 0.82rem;
+      }
+      table.fn-table th {
+        text-align: left;
+        font-family: var(--font-mono);
+        font-size: 0.66rem;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        color: var(--ink-soft);
+        font-weight: 500;
+        padding: 8px 10px;
+        border-bottom: 1px solid var(--line);
+      }
+      table.fn-table td {
+        padding: 9px 10px;
+        border-bottom: 1px solid var(--line-soft);
+        vertical-align: top;
+      }
+      table.fn-table tr:last-child td {
+        border-bottom: none;
+      }
+      table.fn-table td.sig {
+        font-family: var(--font-mono);
+        font-size: 0.78rem;
+        color: var(--accent2);
+        white-space: nowrap;
+      }
+      .fn-table-wrap {
+        overflow-x: auto;
+      }
+
+      .pill {
+        display: inline-block;
+        font-family: var(--font-mono);
+        font-size: 0.62rem;
+        padding: 1px 7px;
+        border-radius: 999px;
+        border: 1px solid var(--line);
+        color: var(--ink-soft);
+        margin-left: 6px;
+        white-space: nowrap;
+      }
+      .pill.model {
+        border-color: var(--accent);
+        color: var(--accent);
+      }
+      .pill.gate {
+        border-color: var(--accent2);
+        color: var(--accent2);
+      }
+
+      .grid-2 {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+        gap: 18px;
+      }
+
+      .invariants {
+        list-style: none;
+        margin: 0;
+        padding: 0;
+        display: grid;
+        gap: 14px;
+      }
+      .invariants li {
+        border-left: 3px solid var(--accent);
+        padding: 2px 0 2px 16px;
+      }
+      .invariants strong {
+        font-family: var(--font-mono);
+        font-size: 0.9rem;
+      }
+      .invariants span {
+        display: block;
+        color: var(--ink-soft);
+        font-size: 0.86rem;
+        margin-top: 2px;
+        max-width: 64ch;
+      }
+
+      footer {
+        max-width: 900px;
+        margin-top: 70px;
+        padding-top: 18px;
+        border-top: 1px solid var(--line-soft);
+        font-size: 0.78rem;
+        color: var(--ink-soft);
+      }
+
+      @media (max-width: 860px) {
+        .shell {
+          grid-template-columns: 1fr;
+        }
+        nav.rail {
+          position: static;
+          height: auto;
+          border-right: none;
+          border-bottom: 1px solid var(--line-soft);
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="shell">
+      <nav class="rail">
+        <div class="rail-brand">wangs-agent <span class="ver">v0.3.2</span></div>
+        <p class="rail-sub">Source map & runtime flow</p>
+
+        <div class="rail-group">
+          <p class="rail-label">Orientation</p>
+          <ul>
+            <li><a class="nav-link" href="#layers">Two layers</a></li>
+            <li><a class="nav-link" href="#flow-startup">Chat startup</a></li>
+            <li><a class="nav-link" href="#flow-feature">Feature-build flow</a></li>
+            <li><a class="nav-link" href="#flow-pipeline">Pipeline state machine</a></li>
+            <li><a class="nav-link" href="#invariants">Invariants</a></li>
+          </ul>
+        </div>
+
+        <div class="rail-group">
+          <p class="rail-label">Chat host — src/</p>
+          <ul>
+            <li><a class="nav-link" href="#f-cli">cli.ts</a></li>
+            <li><a class="nav-link" href="#f-repl">repl.ts</a></li>
+            <li><a class="nav-link" href="#f-input-queue">input-queue.ts</a></li>
+            <li><a class="nav-link" href="#f-session-options">session-options.ts</a></li>
+            <li><a class="nav-link" href="#f-permission-prompt">permission-prompt.ts</a></li>
+            <li><a class="nav-link" href="#f-render">render.ts</a></li>
+            <li><a class="nav-link" href="#f-persona">persona.ts</a></li>
+            <li><a class="nav-link" href="#f-subagents">subagents.ts</a></li>
+            <li><a class="nav-link" href="#f-feature-build-tool">feature-build-tool.ts</a></li>
+            <li><a class="nav-link" href="#f-slash-commands">slash-commands.ts</a></li>
+            <li><a class="nav-link" href="#f-types">types.ts / index.ts</a></li>
+          </ul>
+        </div>
+
+        <div class="rail-group">
+          <p class="rail-label">Pipeline — src/pipeline/</p>
+          <ul>
+            <li><a class="nav-link" href="#f-run-build-feature">run-build-feature.ts</a></li>
+            <li><a class="nav-link" href="#f-requirements-phase">requirements-phase.ts</a></li>
+            <li><a class="nav-link" href="#f-agent-runner">agent-runner.ts</a></li>
+            <li><a class="nav-link" href="#f-prompts">prompts.ts</a></li>
+            <li><a class="nav-link" href="#f-gates">gates.ts</a></li>
+            <li><a class="nav-link" href="#f-bug-routing">bug-routing.ts</a></li>
+            <li><a class="nav-link" href="#f-schemas">schemas.ts</a></li>
+            <li><a class="nav-link" href="#f-state">state.ts</a></li>
+            <li><a class="nav-link" href="#f-project-conventions">project-conventions.ts</a></li>
+            <li><a class="nav-link" href="#f-pipeline-types">types.ts / index.ts</a></li>
+          </ul>
+        </div>
+
+        <div class="rail-group">
+          <p class="rail-label">Bundled — wangs-plugin/</p>
+          <ul>
+            <li><a class="nav-link" href="#f-plugin">skills & manifest</a></li>
+          </ul>
+        </div>
+      </nav>
+
+      <main>
+        <header class="hero">
+          <p class="eyebrow">Architecture reference</p>
+          <h1>What every function does, and how a message actually flows through it</h1>
+          <p>
+            wangs-agent is two systems sharing one process: a genuine multi-turn chat host (streams tokens, prompts for tool permission, behaves like
+            Claude Code) sitting on top of a deterministic, gate-driven feature-build pipeline that the chat can dispatch into but never talks its way
+            around. This map traces every file — what it owns, what calls it, and what it calls next.
+          </p>
+          <div class="hero-meta">
+            <span class="chip">23 source files · 1,850 LOC</span>
+            <span class="chip">@anthropic-ai/claude-agent-sdk</span>
+            <span class="chip">oxlint + oxfmt</span>
+          </div>
+        </header>
+
+        <section class="block wide" id="layers">
+          <h2><span class="num">01</span>Two layers, one process</h2>
+          <p class="block-intro">
+            <code>src/*.ts</code> is the interactive shell: it owns the terminal, the model conversation, and the human.
+            <code>src/pipeline/*.ts</code> is the part that used to be its own CLI (<code>agentic-feature-loop</code>) before being merged in — it
+            owns the 8-phase feature build and never lets the model's own judgment decide whether a phase is "done." The chat layer calls into the
+            pipeline; the pipeline never calls back into the chat layer.
+          </p>
+          <div class="layers">
+            <div class="layer-card">
+              <span class="tag">Chat host</span>
+              <h4>Interactive shell</h4>
+              <p>Owns readline, the one long-lived <code>query()</code> session, streaming render, and tool-permission prompts.</p>
+              <div class="files">
+                <span>cli.ts</span><span>repl.ts</span><span>input-queue.ts</span><span>render.ts</span><span>permission-prompt.ts</span
+                ><span>session-options.ts</span><span>persona.ts</span>
+              </div>
+            </div>
+            <div class="layer-card">
+              <span class="tag">Dispatch bridge</span>
+              <h4>Two doors, one controller</h4>
+              <p>
+                The model's <code>create_feature</code> tool and the literal <code>/create-feature</code> command both land on the same host object.
+              </p>
+              <div class="files"><span>feature-build-tool.ts</span><span>slash-commands.ts</span><span>subagents.ts</span></div>
+            </div>
+            <div class="layer-card">
+              <span class="tag">Deterministic pipeline</span>
+              <h4>The 8-phase build</h4>
+              <p>Control flow, gates, and retries live in code. The model is called for exactly 5 of the 8 phases and never decides pass/fail.</p>
+              <div class="files">
+                <span>run-build-feature.ts</span><span>requirements-phase.ts</span><span>agent-runner.ts</span><span>prompts.ts</span
+                ><span>gates.ts</span><span>bug-routing.ts</span><span>schemas.ts</span><span>state.ts</span>
+              </div>
+            </div>
+            <div class="layer-card">
+              <span class="tag">Bundled content</span>
+              <h4>Ships inside the npm package</h4>
+              <p>
+                4 subagents as plain objects, 4 skills as real files — a consumer repo needs none of its own <code>.claude/</code> config for these.
+              </p>
+              <div class="files"><span>subagents.ts</span><span>wangs-plugin/</span></div>
+            </div>
+          </div>
+        </section>
+
+        <section class="block wide" id="flow-startup">
+          <h2><span class="num">02</span>Starting a chat session</h2>
+          <p class="block-intro">
+            One <code>query()</code> call for the whole process lifetime. <code>AsyncInputQueue</code> is the trick that makes that possible —
+            readline's <code>line</code> events push into it, and the SDK pulls from it as an async iterable, so the session never restarts between
+            messages.
+          </p>
+          <div class="diagram">
+            <pre class="mermaid">
+sequenceDiagram
+    participant U as Terminal
+    participant CLI as cli.ts
+    participant REPL as repl.ts
+    participant OPT as session-options.ts
+    participant Q as AsyncInputQueue
+    participant SDK as query() session
+    participant FBC as FeatureBuildController
+
+    U->>CLI: npx wangs-agent --project=.
+    CLI->>REPL: runRepl({ cwd })
+    REPL->>FBC: new FeatureBuildController(rl, cwd)
+    REPL->>OPT: buildSessionOptions(cwd, canUseTool, FBC)
+    OPT-->>REPL: Options (agents, plugins, mcpServers, persona)
+    REPL->>SDK: query({ prompt: inputQueue, options })
+    REPL->>U: "> " prompt
+    loop every keystroke line
+        U->>REPL: rl 'line' event
+        REPL->>FBC: handleLine(line)
+        alt busy, awaiting answer, or /create-feature
+            FBC-->>REPL: handled = true
+            REPL->>U: print result, re-prompt
+        else ordinary chat message
+            REPL->>Q: push(line)
+            Q->>SDK: yielded as SDKUserMessage
+            SDK-->>REPL: stream_event / assistant / result
+            REPL->>U: renderMessage() streams tokens
+        end
+    end
+</pre>
+          </div>
+          <p class="diagram-caption">repl.ts § runRepl() — the host-intercept check always runs before a line reaches the model.</p>
+        </section>
+
+        <section class="block wide" id="flow-feature">
+          <h2><span class="num">03</span>Two doors into the same feature build</h2>
+          <p class="block-intro">
+            The model can decide to call <code>create_feature</code> mid-conversation, or the user can type <code>/create-feature</code> directly —
+            both paths converge on <code>FeatureBuildController.start()</code> before anything touches the pipeline.
+          </p>
+          <div class="diagram">
+            <pre class="mermaid">
+flowchart LR
+    subgraph Entry["Two entry points"]
+        M["Model calls the\ncreate_feature tool"]
+        S["User types\n/create-feature or /cf"]
+    end
+    M --> FBT["feature-build-tool.ts\ncreateFeatureBuildMcpServer()"]
+    S --> SC1["slash-commands.ts\nrunInteractivePrompt()\n(asks 6 questions)"]
+    FBT --> C["FeatureBuildController.start()"]
+    SC1 --> C
+    C --> P["runFeatureBuildPipeline()\npipeline/run-build-feature.ts"]
+    P -->|"needs_input"| Pend["controller stores pending\n{featureSlug, project}"]
+    Pend -->|"user's very next message"| Ans["FeatureBuildController.answer()"]
+    Ans --> P
+    P -->|"completed / failed"| Done["renderResult() → printed verbatim"]
+</pre>
+          </div>
+          <p class="diagram-caption">
+            Once a build is <code>needs_input</code>, the user's next plain message is intercepted by handleLine() and never reaches the model — no
+            re-formatting a resume call.
+          </p>
+        </section>
+
+        <section class="block wide" id="flow-pipeline">
+          <h2><span class="num">04</span>Inside the pipeline: 8 phases, one retry rule</h2>
+          <p class="block-intro">
+            <code>run-build-feature.ts</code> walks a cursor through <code>CODE_PHASES</code>. A gate failure doesn't just retry the phase that failed
+            — <code>bug-routing.ts</code> classifies which phase actually owns the bug and rewinds the cursor there, un-completing everything after it
+            (requirements is never rewound).
+          </p>
+          <div class="diagram">
+            <pre class="mermaid">
+flowchart TD
+    R["requirements\n(own clarify loop)"] -->|bundle ready| DL["data-layer"]
+    DL -->|"pnpm type-check"| TC["test-contract"]
+    TC -->|"spectra sync-types + type-check"| UI["ui-slice"]
+    UI -->|"grep: every selector has aria-label/id"| CN["connect"]
+    CN -->|"type-check + dependency-rule grep"| E2E["e2e-run"]
+    E2E -->|"spectra run + spectra test"| LT["lint"]
+    LT -->|"type-check + pnpm lint"| RV["review"]
+    RV -->|"0 BLOCKER findings"| Done(("completed"))
+
+    DL -.fail.-> Retry{{"classify + rewind\n(bug-routing.ts)"}}
+    TC -.fail.-> Retry
+    UI -.fail.-> Retry
+    CN -.fail.-> Retry
+    E2E -.fail.-> Retry
+    LT -.fail.-> Retry
+    RV -.fail.-> Retry
+    Retry -->|"retries ≤ maxRetries (3)"| DL
+    Retry -->|"retries exceeded"| Failed(("failed\n+ escalation"))
+
+    R -.gap unresolved.-> NI1(("needs_input"))
+    DL -.interactive mode, not yet approved.-> NI2(("needs_input"))
+</pre>
+          </div>
+          <p class="diagram-caption">
+            Only data-layer, test-contract, ui-slice, connect, and review call the model (agent-runner.ts). e2e-run and lint are gate-only — a real
+            command decides, nothing else.
+          </p>
+        </section>
+
+        <section class="block" id="invariants">
+          <h2><span class="num">05</span>What never changes</h2>
+          <ul class="invariants">
+            <li>
+              <strong>Gates are commands, never opinions.</strong
+              ><span
+                >Every phase advance is gated by <code>tsc</code>, <code>oxlint</code>/<code>pnpm lint</code>, a grep, or a real e2e run (gates.ts) —
+                a model's structured output is validated by Zod (schemas.ts), never trusted as "done."</span
+              >
+            </li>
+            <li>
+              <strong>Control flow lives in code the model can't talk around.</strong
+              ><span>agent-runner.ts is the only file that calls the model. run-build-feature.ts is the only file that decides what runs next.</span>
+            </li>
+            <li>
+              <strong>State is a file, not memory.</strong
+              ><span
+                ><code>.feature-build/&lt;slug&gt;/state.json</code> makes every needs_input pause and resume call safe and idempotent — it's how a
+                chat message days apart still resumes correctly.</span
+              >
+            </li>
+            <li>
+              <strong>Subagents and skills ship inside this package.</strong
+              ><span
+                ><code>Options.agents</code> (subagents.ts) and <code>Options.plugins</code> (wangs-plugin/) mean a consumer repo carries zero
+                <code>.claude/agents</code> or project-specific <code>.claude/skills</code> — updating wangs-agent updates them.</span
+              >
+            </li>
+            <li>
+              <strong>A pipeline crash can never take the chat down.</strong
+              ><span
+                >FeatureBuildController.start()/.answer() catch everything and return a synthetic <code>hostFailure</code> result instead of letting
+                an exception escape.</span
+              >
+            </li>
+          </ul>
+        </section>
+
+        <section class="block wide" id="filecards">
+          <h2><span class="num">06</span>File-by-file reference</h2>
+          <p class="block-intro">Every exported function and the methods that matter, grouped the same way the nav rail is.</p>
+
+          <h3>Chat host — src/</h3>
+
+          <details class="filecard" id="f-cli">
+            <summary><span class="fname">cli.ts</span><span class="frole">binary entry point</span><span class="floc">43 lines</span></summary>
+            <div class="filecard-body">
+              <p class="filecard-note">
+                The literal <code>#!/usr/bin/env node</code> — parses flags, prints help, hands off to the REPL, and is the only place
+                <code>process.exit(1)</code> is allowed to fire (on an uncaught error at the very top).
+              </p>
+              <div class="fn-table-wrap">
+                <table class="fn-table">
+                  <tr>
+                    <th>Function</th>
+                    <th>Does</th>
+                  </tr>
+                  <tr>
+                    <td class="sig">main()</td>
+                    <td>
+                      Handles <code>--help</code>/<code>-h</code>; resolves <code>--project=</code> (default: <code>process.cwd()</code>); calls
+                      <code>runRepl({cwd})</code>.
+                    </td>
+                  </tr>
+                  <tr>
+                    <td class="sig">parseProjectFlag(argv)</td>
+                    <td>Pulls the <code>--project=&lt;path&gt;</code> value out of argv, if present.</td>
+                  </tr>
+                </table>
+              </div>
+            </div>
+          </details>
+
+          <details class="filecard" id="f-repl">
+            <summary><span class="fname">repl.ts</span><span class="frole">the interactive loop</span><span class="floc">75 lines</span></summary>
+            <div class="filecard-body">
+              <p class="filecard-note">
+                Wires readline ↔ AsyncInputQueue ↔ the one long-lived <code>query()</code> session. Gives <code>FeatureBuildController</code> first
+                look at every line before it can reach the model.
+              </p>
+              <div class="fn-table-wrap">
+                <table class="fn-table">
+                  <tr>
+                    <th>Function</th>
+                    <th>Does</th>
+                  </tr>
+                  <tr>
+                    <td class="sig">runRepl({cwd})</td>
+                    <td>
+                      Builds the queue, readline interface, controller, and Options; opens the single <code>query()</code> session for the process
+                      lifetime; on each <code>line</code> event, tries the host intercept first, else pushes to the model; drains the session with
+                      <code>renderMessage()</code> until <code>/exit</code>.
+                    </td>
+                  </tr>
+                </table>
+              </div>
+            </div>
+          </details>
+
+          <details class="filecard" id="f-input-queue">
+            <summary>
+              <span class="fname">input-queue.ts</span><span class="frole">readline → AsyncIterable bridge</span><span class="floc">50 lines</span>
+            </summary>
+            <div class="filecard-body">
+              <p class="filecard-note">
+                A pull-based queue: buffers a pushed message if nothing's waiting, or resolves a waiting <code>next()</code> immediately. This is the
+                entire trick that keeps the SDK session "ongoing" instead of one-shot.
+              </p>
+              <div class="fn-table-wrap">
+                <table class="fn-table">
+                  <tr>
+                    <th>Class member</th>
+                    <th>Does</th>
+                  </tr>
+                  <tr>
+                    <td class="sig">AsyncInputQueue</td>
+                    <td>Implements <code>AsyncIterable&lt;SDKUserMessage&gt;</code>.</td>
+                  </tr>
+                  <tr>
+                    <td class="sig">.push(text)</td>
+                    <td>Wraps text as an <code>SDKUserMessage</code>; resolves a pending iterator or buffers it.</td>
+                  </tr>
+                  <tr>
+                    <td class="sig">.close()</td>
+                    <td>Marks the queue closed; resolves any waiter with <code>done:true</code>.</td>
+                  </tr>
+                  <tr>
+                    <td class="sig">[Symbol.asyncIterator]()</td>
+                    <td>
+                      Shifts a buffered message, or returns a promise that resolves the next time <code>.push()</code> or <code>.close()</code> fires.
+                    </td>
+                  </tr>
+                </table>
+              </div>
+            </div>
+          </details>
+
+          <details class="filecard" id="f-session-options">
+            <summary>
+              <span class="fname">session-options.ts</span><span class="frole">builds the SDK Options object</span><span class="floc">54 lines</span>
+            </summary>
+            <div class="filecard-body">
+              <p class="filecard-note">
+                Everything that makes the chat "behave like Claude Code" and everything Wangs-specific converge here: the full tool preset, the
+                persona append, the bundled plugin path, the programmatic subagents, and the <code>create_feature</code> MCP tool.
+              </p>
+              <div class="fn-table-wrap">
+                <table class="fn-table">
+                  <tr>
+                    <th>Function</th>
+                    <th>Does</th>
+                  </tr>
+                  <tr>
+                    <td class="sig">buildSessionOptions(cwd, canUseTool, controller)</td>
+                    <td>
+                      Resolves <code>wangs-plugin/</code>'s absolute path from this module's own location (works installed or from source); returns
+                      the full <code>Options</code> — <code>tools: claude_code preset</code>, <code>mcpServers.wangs-feature-build</code>,
+                      <code>plugins</code>, <code>agents</code>, <code>systemPrompt</code> append, <code>permissionMode: "default"</code>,
+                      <code>canUseTool</code>.
+                    </td>
+                  </tr>
+                </table>
+              </div>
+            </div>
+          </details>
+
+          <details class="filecard" id="f-permission-prompt">
+            <summary>
+              <span class="fname">permission-prompt.ts</span><span class="frole">tool-use y/n gate</span><span class="floc">49 lines</span>
+            </summary>
+            <div class="filecard-body">
+              <p class="filecard-note">
+                A blocking terminal prompt per tool call — serialized through a promise-chain queue so overlapping requests (e.g. a subagent firing
+                several tool calls) can't corrupt readline's internal state.
+              </p>
+              <div class="fn-table-wrap">
+                <table class="fn-table">
+                  <tr>
+                    <th>Function</th>
+                    <th>Does</th>
+                  </tr>
+                  <tr>
+                    <td class="sig">makeCanUseTool(rl)</td>
+                    <td>
+                      Returns a <code>CanUseTool</code> callback: queues each request behind the previous one, prints
+                      <code>Allow &lt;tool&gt;? [y/N]</code>, returns <code>allow</code>/<code>deny</code> — never <code>null</code> (that fails
+                      closed forever, per SDK docs).
+                    </td>
+                  </tr>
+                  <tr>
+                    <td class="sig">askYesNo(rl, question)</td>
+                    <td>One <code>rl.question()</code> promisified, case-insensitive y/yes check.</td>
+                  </tr>
+                </table>
+              </div>
+            </div>
+          </details>
+
+          <details class="filecard" id="f-render">
+            <summary><span class="fname">render.ts</span><span class="frole">prints streamed output</span><span class="floc">29 lines</span></summary>
+            <div class="filecard-body">
+              <div class="fn-table-wrap">
+                <table class="fn-table">
+                  <tr>
+                    <th>Function</th>
+                    <th>Does</th>
+                  </tr>
+                  <tr>
+                    <td class="sig">renderMessage(message)</td>
+                    <td>
+                      Writes token-level text deltas from <code>stream_event</code> as they arrive; a newline after a full
+                      <code>assistant</code> turn; a cost/error footer after <code>result</code>.
+                    </td>
+                  </tr>
+                </table>
+              </div>
+            </div>
+          </details>
+
+          <details class="filecard" id="f-persona">
+            <summary><span class="fname">persona.ts</span><span class="frole">system-prompt append</span><span class="floc">11 lines</span></summary>
+            <div class="filecard-body">
+              <p class="filecard-note">
+                No functions — one exported string, layered on top of Claude Code's own default system prompt (never replacing it). States the Wangs
+                Foundation architecture, the load-bearing "use create_feature, never hand-build" rule, and proactive subagent-delegation guidance.
+              </p>
+            </div>
+          </details>
+
+          <details class="filecard" id="f-subagents">
+            <summary>
+              <span class="fname">subagents.ts</span><span class="frole">programmatic subagent definitions</span><span class="floc">158 lines</span>
+            </summary>
+            <div class="filecard-body">
+              <p class="filecard-note">
+                4 <code>AgentDefinition</code> objects, shared by both the interactive chat (session-options.ts) and the headless pipeline
+                (pipeline/agent-runner.ts) — a consumer repo needs no <code>.claude/agents/*.md</code> files at all.
+              </p>
+              <div class="fn-table-wrap">
+                <table class="fn-table">
+                  <tr>
+                    <th>Export</th>
+                    <th>Does</th>
+                  </tr>
+                  <tr>
+                    <td class="sig">WANGS_SUBAGENTS</td>
+                    <td>Map of 4 agents dispatched via the SDK's <code>Agent</code> tool.</td>
+                  </tr>
+                  <tr>
+                    <td class="sig">↳ wangs-ui-querier <span class="pill model">model turn</span></td>
+                    <td>
+                      Only subagent with tools; its own scoped <code>mcpServers</code> (<code>npx -y @wangs-ui/mcp@latest</code>, stdio) — the main
+                      session never gets these MCP tools, structurally, not just by prompt convention.
+                    </td>
+                  </tr>
+                  <tr>
+                    <td class="sig">↳ ui-design-reader</td>
+                    <td>Read/Grep only — reads a UI Design doc, returns it structured, verbatim, no summarizing.</td>
+                  </tr>
+                  <tr>
+                    <td class="sig">↳ functional-reader</td>
+                    <td>Same shape, for Functionality docs.</td>
+                  </tr>
+                  <tr>
+                    <td class="sig">↳ test-case-reader</td>
+                    <td>Same shape, for Test Case docs.</td>
+                  </tr>
+                </table>
+              </div>
+            </div>
+          </details>
+
+          <details class="filecard" id="f-feature-build-tool">
+            <summary>
+              <span class="fname">feature-build-tool.ts</span><span class="frole">the model's on-ramp</span><span class="floc">35 lines</span>
+            </summary>
+            <div class="filecard-body">
+              <p class="filecard-note">
+                The model's only conversational door into the pipeline. Its tool description explicitly forbids the model from building the feature
+                itself.
+              </p>
+              <div class="fn-table-wrap">
+                <table class="fn-table">
+                  <tr>
+                    <th>Function</th>
+                    <th>Does</th>
+                  </tr>
+                  <tr>
+                    <td class="sig">createFeatureBuildMcpServer(controller)</td>
+                    <td>
+                      Defines the <code>create_feature</code> SDK tool (zod-typed args: slug + 5 doc paths + mode); handler is 100% host code — calls
+                      <code>controller.start(args)</code> and returns the JSON result for the model to relay verbatim.
+                    </td>
+                  </tr>
+                </table>
+              </div>
+            </div>
+          </details>
+
+          <details class="filecard" id="f-slash-commands">
+            <summary>
+              <span class="fname">slash-commands.ts</span><span class="frole">host-side build state</span><span class="floc">153 lines</span>
+            </summary>
+            <div class="filecard-body">
+              <p class="filecard-note">
+                Owns the "build a feature" workflow's state — same code path whether triggered by the model's tool or the literal slash command. Never
+                lets an exception escape to crash the chat.
+              </p>
+              <div class="fn-table-wrap">
+                <table class="fn-table">
+                  <tr>
+                    <th>Member</th>
+                    <th>Does</th>
+                  </tr>
+                  <tr>
+                    <td class="sig">FeatureBuildController</td>
+                    <td>Holds <code>pending</code> (which feature is mid- <code>needs_input</code>) and <code>busy</code>.</td>
+                  </tr>
+                  <tr>
+                    <td class="sig">.start(args)</td>
+                    <td>
+                      Runs the pipeline fresh (<code>resume:false</code>); catches any throw into a synthetic <code>hostFailure</code>; never rejects.
+                    </td>
+                  </tr>
+                  <tr>
+                    <td class="sig">.answer(answer)</td>
+                    <td><em>(private)</em> Resumes the pending build with the user's reply (<code>resume:true</code>).</td>
+                  </tr>
+                  <tr>
+                    <td class="sig">.handleLine(line, print)</td>
+                    <td>
+                      The gatekeeper: busy → wait message; awaiting answer → route to <code>.answer()</code>; <code>/create-feature</code>/<code
+                        >/cf</code
+                      >
+                      → <code>runInteractivePrompt()</code>; else → returns <code>false</code>, letting repl.ts push it to the model.
+                    </td>
+                  </tr>
+                  <tr>
+                    <td class="sig">.runInteractivePrompt(print)</td>
+                    <td>Asks the 6 questions (slug + 5 doc paths) via <code>rl.question</code>, then calls <code>.start()</code>.</td>
+                  </tr>
+                  <tr>
+                    <td class="sig">renderResult(result)</td>
+                    <td>Formats a <code>ControllerResult</code> into the human-readable line printed to the terminal.</td>
+                  </tr>
+                  <tr>
+                    <td class="sig">hostFailure(err)</td>
+                    <td>
+                      Wraps any thrown error as <code>{status:"failed", escalation:{phase:"host", ...}}</code> — "host" is deliberately not a real
+                      <code>PhaseName</code>.
+                    </td>
+                  </tr>
+                </table>
+              </div>
+            </div>
+          </details>
+
+          <details class="filecard" id="f-types">
+            <summary>
+              <span class="fname">types.ts · index.ts</span><span class="frole">shared shapes & programmatic export</span
+              ><span class="floc">14 + 4 lines</span>
+            </summary>
+            <div class="filecard-body">
+              <p class="filecard-note">
+                <code>types.ts</code>: <code>PendingFeatureBuild</code> (used by slash-commands.ts). <code>index.ts</code>: re-exports
+                <code>runRepl</code> for anything embedding this chat instead of shelling out to the binary.
+              </p>
+            </div>
+          </details>
+
+          <h3>Deterministic pipeline — src/pipeline/</h3>
+
+          <details class="filecard" id="f-run-build-feature">
+            <summary>
+              <span class="fname">run-build-feature.ts</span><span class="frole">the orchestrator</span><span class="floc">284 lines</span>
+            </summary>
+            <div class="filecard-body">
+              <p class="filecard-note">
+                Owns every control-flow decision: which phase runs next, retry vs. rewind, when execution pauses for a human. The model is never
+                consulted about any of this — see the state-machine diagram above.
+              </p>
+              <div class="fn-table-wrap">
+                <table class="fn-table">
+                  <tr>
+                    <th>Function</th>
+                    <th>Does</th>
+                  </tr>
+                  <tr>
+                    <td class="sig">runFeatureBuildPipeline(args)</td>
+                    <td>
+                      The entry point. Resolves scope, loads/inits state, persists doc paths on first call, short-circuits if already completed, runs
+                      the requirements phase then the CODE_PHASES loop, returns a <code>FeatureBuildResult</code>. Replaces the old CLI's four
+                      <code>process.exit()</code> calls with plain returns.
+                    </td>
+                  </tr>
+                  <tr>
+                    <td class="sig">runOnePhase(phase, ctx, state, bundle)</td>
+                    <td>
+                      Runs a single phase: gate-only for e2e-run/lint; otherwise builds the prompt, calls the model via <code>runAgentTurn</code>
+                      <span class="pill model">model turn</span>, parses structured output where relevant, then runs the phase's real gate
+                      <span class="pill gate">gate</span>.
+                    </td>
+                  </tr>
+                  <tr>
+                    <td class="sig">applyAnswerToRequirements(state, answer)</td>
+                    <td>
+                      Routes a resume answer during the requirements clarify loop: <code>"accept &lt;ID&gt;"</code> marks a gap accepted, otherwise
+                      it's recorded as the answer to the next unresolved gap.
+                    </td>
+                  </tr>
+                  <tr>
+                    <td class="sig">isModelPhase(phase)</td>
+                    <td>Type guard against <code>MODEL_PHASES</code>.</td>
+                  </tr>
+                  <tr>
+                    <td class="sig">PHASE_TOOL_ALLOWLIST</td>
+                    <td>
+                      Per-phase tool allowlist — only <code>ui-slice</code> includes <code>"Agent"</code> (for dispatching to wangs-ui-querier).
+                    </td>
+                  </tr>
+                </table>
+              </div>
+            </div>
+          </details>
+
+          <details class="filecard" id="f-requirements-phase">
+            <summary>
+              <span class="fname">requirements-phase.ts</span><span class="frole">phase 1's own clarify loop</span><span class="floc">81 lines</span>
+            </summary>
+            <div class="filecard-body">
+              <p class="filecard-note">
+                Deliberately skips reader subagents — reading 5 files by path is plain I/O, and nothing re-reads them later (the full text is embedded
+                once into every later prompt).
+              </p>
+              <div class="fn-table-wrap">
+                <table class="fn-table">
+                  <tr>
+                    <th>Function</th>
+                    <th>Does</th>
+                  </tr>
+                  <tr>
+                    <td class="sig">runRequirementsPhase(ctx, state)</td>
+                    <td>
+                      Extracts the bundle, runs the gap-check model turn, returns <code>done:true</code> with the bundle once every gap is
+                      accepted/clarified, else <code>done:false</code> with a formatted question.
+                    </td>
+                  </tr>
+                  <tr>
+                    <td class="sig">extract(state, clarifications)</td>
+                    <td>Reads the 5 source docs off <code>state.docPaths</code> into a <code>RequirementBundle</code> — no model call.</td>
+                  </tr>
+                  <tr>
+                    <td class="sig">gapCheck(ctx, bundle)</td>
+                    <td>
+                      One no-tools model turn <span class="pill model">model turn</span> against <code>buildGapCheckPrompt</code>; validates the
+                      structured response with <code>gapReportZod</code>.
+                    </td>
+                  </tr>
+                </table>
+              </div>
+            </div>
+          </details>
+
+          <details class="filecard" id="f-agent-runner">
+            <summary>
+              <span class="fname">agent-runner.ts</span><span class="frole">the only file that calls the model</span
+              ><span class="floc">65 lines</span>
+            </summary>
+            <div class="filecard-body">
+              <div class="fn-table-wrap">
+                <table class="fn-table">
+                  <tr>
+                    <th>Function</th>
+                    <th>Does</th>
+                  </tr>
+                  <tr>
+                    <td class="sig">runAgentTurn(params)</td>
+                    <td>
+                      Single-shot <code>query()</code> call (headless — <code>permissionMode: "bypassPermissions"</code>, no terminal to prompt);
+                      registers <code>WANGS_SUBAGENTS</code>; scopes tools per-phase via <code>allowedTools</code>; drains messages and returns the
+                      final <code>result</code>'s cost, text, structured output, and errors.
+                    </td>
+                  </tr>
+                </table>
+              </div>
+            </div>
+          </details>
+
+          <details class="filecard" id="f-prompts">
+            <summary>
+              <span class="fname">prompts.ts</span><span class="frole">prompt string builders</span><span class="floc">180 lines</span>
+            </summary>
+            <div class="filecard-body">
+              <p class="filecard-note">
+                Pure string construction, no side effects. Every builder shares <code>bundleBlock</code> so no phase needs a subagent to re-fetch a
+                doc it already has.
+              </p>
+              <div class="fn-table-wrap">
+                <table class="fn-table">
+                  <tr>
+                    <th>Function</th>
+                    <th>Does</th>
+                  </tr>
+                  <tr>
+                    <td class="sig">buildPhasePrompt(phase, ...)</td>
+                    <td>Dispatches to the right builder below; throws for gate-only phases.</td>
+                  </tr>
+                  <tr>
+                    <td class="sig">buildDataLayerPrompt</td>
+                    <td>DTOs + DataSource functions from the OpenAPI spec.</td>
+                  </tr>
+                  <tr>
+                    <td class="sig">buildTestContractPrompt</td>
+                    <td>TestSpectra project + Page Object + zero-import specs + fixtures.</td>
+                  </tr>
+                  <tr>
+                    <td class="sig">buildUiSlicePrompt</td>
+                    <td>
+                      ViewModel + View fulfilling the Page Object contract; tells the model to delegate to wangs-ui-querier, never call the MCP tool
+                      itself.
+                    </td>
+                  </tr>
+                  <tr>
+                    <td class="sig">buildConnectPrompt</td>
+                    <td>Wires the ViewModel to the real DataSource.</td>
+                  </tr>
+                  <tr>
+                    <td class="sig">buildReviewPrompt</td>
+                    <td>Runs the full <code>slicing-review</code> skill, structured findings only.</td>
+                  </tr>
+                  <tr>
+                    <td class="sig">buildGapCheckPrompt</td>
+                    <td>Cross-references all 5 docs for missing/contradictory/ambiguous coverage.</td>
+                  </tr>
+                  <tr>
+                    <td class="sig">bundleBlock(bundle)</td>
+                    <td>Serializes the full RequirementBundle + clarifications into every prompt above.</td>
+                  </tr>
+                </table>
+              </div>
+            </div>
+          </details>
+
+          <details class="filecard" id="f-gates">
+            <summary>
+              <span class="fname">gates.ts</span><span class="frole">real commands decide pass/fail</span><span class="floc">203 lines</span>
+            </summary>
+            <div class="filecard-body">
+              <p class="filecard-note">Every function here is a shelled-out command or a grep — the load-bearing idea of the whole orchestrator.</p>
+              <div class="fn-table-wrap">
+                <table class="fn-table">
+                  <tr>
+                    <th>Function</th>
+                    <th>Does</th>
+                  </tr>
+                  <tr>
+                    <td class="sig">runGate(phase, ctx, artifact?)</td>
+                    <td>The single dispatcher run-build-feature.ts calls — switches on phase to one of the functions below.</td>
+                  </tr>
+                  <tr>
+                    <td class="sig">runTypeCheck <span class="pill gate">gate</span></td>
+                    <td><code>pnpm type-check</code>.</td>
+                  </tr>
+                  <tr>
+                    <td class="sig">runLint <span class="pill gate">gate</span></td>
+                    <td><code>pnpm lint</code>.</td>
+                  </tr>
+                  <tr>
+                    <td class="sig">runSpectraSyncTypes <span class="pill gate">gate</span></td>
+                    <td><code>npx spectra sync-types</code>, then type-check the result.</td>
+                  </tr>
+                  <tr>
+                    <td class="sig">runSpectraE2e <span class="pill gate">gate</span></td>
+                    <td>
+                      <code>spectra run --headless</code> on <code>.test.ts</code> specs, then <code>spectra test</code> on any
+                      <code>.test.tsx</code> component specs.
+                    </td>
+                  </tr>
+                  <tr>
+                    <td class="sig">checkSelectorContract <span class="pill gate">gate</span></td>
+                    <td>
+                      Greps rendered UI for every Page-Object-required
+                      <code>aria-label</code>/<code>accessibilityLabel</code>/<code>id</code>/<code>testID</code>.
+                    </td>
+                  </tr>
+                  <tr>
+                    <td class="sig">checkDependencyRules <span class="pill gate">gate</span></td>
+                    <td>Greps ViewModels for platform-specific imports and Views for direct DataSource imports.</td>
+                  </tr>
+                  <tr>
+                    <td class="sig">findFilesByExt / grepRecursive / classifyE2eFailure / run</td>
+                    <td>Internal helpers the gates above share.</td>
+                  </tr>
+                </table>
+              </div>
+            </div>
+          </details>
+
+          <details class="filecard" id="f-bug-routing">
+            <summary>
+              <span class="fname">bug-routing.ts</span><span class="frole">§4.4 bug routing, mechanized</span><span class="floc">25 lines</span>
+            </summary>
+            <div class="filecard-body">
+              <div class="fn-table-wrap">
+                <table class="fn-table">
+                  <tr>
+                    <th>Function</th>
+                    <th>Does</th>
+                  </tr>
+                  <tr>
+                    <td class="sig">classifyLintFailure(report, slug)</td>
+                    <td>
+                      Text-matches a failure's file path to <code>data/</code> or <code>ui/</code>; a ViewModel-only match routes to
+                      <code>connect</code>, not <code>ui-slice</code>.
+                    </td>
+                  </tr>
+                  <tr>
+                    <td class="sig">classifyReviewFinding(rule)</td>
+                    <td>Text-matches a slicing-review rule name to the phase that owns it.</td>
+                  </tr>
+                </table>
+              </div>
+            </div>
+          </details>
+
+          <details class="filecard" id="f-schemas">
+            <summary>
+              <span class="fname">schemas.ts</span><span class="frole">structured-output contracts</span><span class="floc">115 lines</span>
+            </summary>
+            <div class="filecard-body">
+              <p class="filecard-note">
+                Zod schema + hand-written JSON Schema, kept side by side on purpose: the JSON Schema is what the SDK's
+                <code>outputFormat</code> actually accepts; the Zod schema then validates the real response, so drift between the two fails loudly
+                instead of silently trusting the model's shape.
+              </p>
+              <div class="fn-table-wrap">
+                <table class="fn-table">
+                  <tr>
+                    <th>Export pair</th>
+                    <th>Validates</th>
+                  </tr>
+                  <tr>
+                    <td class="sig">gapReportZod / gapReportJsonSchema</td>
+                    <td>Requirements phase's gap list.</td>
+                  </tr>
+                  <tr>
+                    <td class="sig">pageObjectContractZod / …JsonSchema</td>
+                    <td>Test-contract phase's selector contract.</td>
+                  </tr>
+                  <tr>
+                    <td class="sig">reviewFindingsZod / …JsonSchema</td>
+                    <td>Review phase's BLOCKER/WARNING/INFO findings.</td>
+                  </tr>
+                </table>
+              </div>
+            </div>
+          </details>
+
+          <details class="filecard" id="f-state">
+            <summary><span class="fname">state.ts</span><span class="frole">on-disk persistence</span><span class="floc">40 lines</span></summary>
+            <div class="filecard-body">
+              <p class="filecard-note">
+                What makes every <code>needs_input</code> pause and resume call safe across separate invocations — state lives at
+                <code>&lt;project&gt;/.feature-build/&lt;slug&gt;/state.json</code>.
+              </p>
+              <div class="fn-table-wrap">
+                <table class="fn-table">
+                  <tr>
+                    <th>Function</th>
+                    <th>Does</th>
+                  </tr>
+                  <tr>
+                    <td class="sig">loadState(repoRoot, slug)</td>
+                    <td>Reads and parses the JSON file, or <code>null</code>.</td>
+                  </tr>
+                  <tr>
+                    <td class="sig">saveState(repoRoot, slug, state)</td>
+                    <td>Stamps <code>updatedAt</code>, writes the file (creating the dir if needed).</td>
+                  </tr>
+                  <tr>
+                    <td class="sig">initState(slug, mode)</td>
+                    <td>Fresh <code>PipelineState</code> for a feature's first call.</td>
+                  </tr>
+                </table>
+              </div>
+            </div>
+          </details>
+
+          <details class="filecard" id="f-project-conventions">
+            <summary>
+              <span class="fname">project-conventions.ts</span><span class="frole">reads the target's own npm scope</span
+              ><span class="floc">25 lines</span>
+            </summary>
+            <div class="filecard-body">
+              <div class="fn-table-wrap">
+                <table class="fn-table">
+                  <tr>
+                    <th>Function</th>
+                    <th>Does</th>
+                  </tr>
+                  <tr>
+                    <td class="sig">detectPackageScope(repoRoot)</td>
+                    <td>
+                      Reads <code>packages/infrastructure/package.json</code>'s <code>name</code> to discover the project's own scope (e.g.
+                      <code>@wangs-foundation</code>); throws a clear, actionable error if the layout doesn't match.
+                    </td>
+                  </tr>
+                </table>
+              </div>
+            </div>
+          </details>
+
+          <details class="filecard" id="f-pipeline-types">
+            <summary>
+              <span class="fname">types.ts · index.ts</span><span class="frole">shared shapes & re-export barrel</span
+              ><span class="floc">154 + 2 lines</span>
+            </summary>
+            <div class="filecard-body">
+              <p class="filecard-note">
+                No behavior. <code>PHASES</code>/<code>PhaseName</code>, <code>MODEL_PHASES</code>, <code>RequirementBundle</code>,
+                <code>PageObjectContract</code>, <code>PipelineState</code>, <code>FeatureBuildArgs</code>/<code>FeatureBuildResult</code>,
+                <code>PipelineContext</code> — everything the other 9 pipeline files share. <code>index.ts</code> re-exports the public surface
+                <code>slash-commands.ts</code> actually imports.
+              </p>
+            </div>
+          </details>
+
+          <h3>Bundled — wangs-plugin/</h3>
+
+          <details class="filecard" id="f-plugin">
+            <summary>
+              <span class="fname">.claude-plugin/plugin.json + skills/</span><span class="frole">model-facing guidance, not enforcement</span
+              ><span class="floc">4 SKILL.md files</span>
+            </summary>
+            <div class="filecard-body">
+              <p class="filecard-note">
+                Loaded via <code>Options.plugins</code> — read by the model when it operates conversationally or when a pipeline prompt says "follow
+                the X skill." Nothing in wangs-agent's own code parses or enforces these; the real enforcement is gates.ts. Resolved from this
+                package's own install location, so it works regardless of the target project's <code>cwd</code>.
+              </p>
+              <div class="fn-table-wrap">
+                <table class="fn-table">
+                  <tr>
+                    <th>Skill</th>
+                    <th>Covers</th>
+                  </tr>
+                  <tr>
+                    <td class="sig">feature-workflow</td>
+                    <td>The 4-step Data → Test Contract → UI → Connect sequence — the skill every phase prompt points back to.</td>
+                  </tr>
+                  <tr>
+                    <td class="sig">slicing-review</td>
+                    <td>The 10-section checklist the <code>review</code> phase runs in full.</td>
+                  </tr>
+                  <tr>
+                    <td class="sig">design-system</td>
+                    <td>Wangs UI typography/layout/component/a11y rules for any conversational UI work.</td>
+                  </tr>
+                  <tr>
+                    <td class="sig">component-spliting</td>
+                    <td>The four-question gate for whether a JSX block should become its own component.</td>
+                  </tr>
+                </table>
+              </div>
+            </div>
+          </details>
+        </section>
+
+        <footer>wangs-agent · standalone chat CLI for Wangs Foundation projects · this map reflects the source as of v0.3.2</footer>
+      </main>
+    </div>
+
+    <script type="module">
+      import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs";
+      const dark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+      mermaid.initialize({ startOnLoad: true, theme: dark ? "dark" : "default", securityLevel: "loose" });
+    </script>
+  </body>
+</html>
