@@ -1,2 +1,2 @@
 minimumReleaseAgeExclude:
-  - agentic-feature-loop@0.1.3
+  - agentic-feature-loop@0.1.3 || 0.1.4
