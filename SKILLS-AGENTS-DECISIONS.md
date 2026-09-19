@@ -98,6 +98,25 @@ gabungan 8 skill `@wangs-ui/skills`, cuma ~6% yang benar-benar soal "panggil MCP
 sisanya domain knowledge/konvensi yang tidak bisa didapat dari MCP mana pun. Dua skill ini
 spesifik malah 0% MCP.
 
+## 8. `graphify.md` (rule tagsamurai) — TIDAK perlu dibundel, dan dikonfirmasi otomatis tersedia
+
+**Status: DIPUTUSKAN — dikonfirmasi live, bukan asumsi.** `tagsamurai-monorepo/.agents/rules/graphify.md`
+mengarahkan pemakaian tool `graphify` (knowledge graph codebase) — tapi itu skill level
+**akun** developer (`~/.claude/skills/graphify`), bukan konvensi Wangs Foundation. Dites
+langsung: jalankan sesi `wangs-agent` nyata lewat `session-options.ts`, panggil
+`q.supportedCommands()` — `graphify` **muncul otomatis**, ditandai `(user)`:
+
+```json
+{ "name": "graphify", "description": "Use for any question about a codebase...", ... }
+```
+
+Kesimpulan: `wangs-agent` tidak perlu bundel apa pun untuk ini — SDK session-nya sudah
+mewarisi skill level akun developer yang menjalankannya (`settingSources` tidak dibatasi di
+`session-options.ts`, jadi default "semua sumber dimuat" berlaku). Membundel graphify ke
+`wangs-agent` justru salah asumsi — mengasumsikan setiap pengguna `wangs-agent` pasti punya
+graphify ter-install di mesinnya sendiri, padahal itu murni setup personal, bukan sesuatu
+yang Wangs Foundation proyek-nya syaratkan.
+
 ---
 
 ## Terbuka / belum ditindaklanjuti
