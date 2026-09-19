@@ -71,14 +71,15 @@ testing, following its Nx-monorepo convention exactly.
 - `e2e/fixtures/*.json` — one fixture per endpoint (success/error/edge), consumed as
   `Fixture.<camelCaseFileName>`
 
-**Selector rule (mandatory — see `docs/03-feature-pattern.md`):**
+**Selector rule (mandatory — see `docs/03-feature-pattern.md`, and TestSpectra's own
+`docs/v2/cli/selectors.md` for the full resolution contract):**
 
-| Selector | Meaning          | Web attribute                                    | React Native attribute | When to use                                                                                                   |
-| -------- | ---------------- | ------------------------------------------------ | ---------------------- | ------------------------------------------------------------------------------------------------------------- |
-| `~name`  | accessibility id | `aria-label`                                     | `accessibilityLabel`   | **Default.** Anything a user can perceive.                                                                    |
-| `#name`  | native id        | `id` / `data-testid` is NOT used here — use `id` | `testID`               | Only when the element genuinely has no accessible name (rare — confirm via `wangs-ui-querier`, never assume). |
+| Selector | Meaning          | Web attribute                                                       | React Native attribute | When to use                                                                                                                                                                                                                          |
+| -------- | ---------------- | ------------------------------------------------------------------- | ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `~name`  | accessibility id | `aria-labelledby`, `aria-label`, or `title` (checked in that order) | `accessibilityLabel`   | **Default.** Anything a user can perceive. Prefer `aria-label` when writing new code — it's the simplest, most common of the three; `aria-labelledby`/`title` exist as fallbacks TestSpectra also resolves, not a menu to pick from. |
+| `#name`  | native id        | `id` / `data-testid` is NOT used here — use `id`                    | `testID`               | Only when the element genuinely has no accessible name (rare — confirm via `wangs-ui-querier`, never assume).                                                                                                                        |
 
-Never author a selector against `data-testid`. It only serves the test; `aria-label`/`accessibilityLabel` serves the test **and** the screen reader, which is the entire point of this rule.
+Never author a selector against `data-testid`. It only serves the test; `aria-label`/`title`/`accessibilityLabel` serve the test **and** the screen reader, which is the entire point of this rule. Note `aria-labelledby` points at another element's `id` (its text content becomes the accessible name) — it is not itself a place to put the name string, so the mechanical selector-fulfillment check below only greps for `aria-label`/`title`/`accessibilityLabel`.
 
 **Network mocking**: `const mock = await Spectra.intercept(url, method, fixturePayload, { statusCode });` —
 the fixture argument is the raw response payload (not `{status, body}`). `await
@@ -125,9 +126,9 @@ Validators built from `@wangs-ui/form/core`'s `Validator<T>` are pure functions 
 
 **ViewModel rules**: no JSX, no platform-specific imports (`@wangs-ui/react-core`, `react-native`, etc. — those stay in the View), strings resolved here not in the View, `navigate()` called here, errors mapped to `errorMessage: string | null`, `isLoading` via plain `useState`.
 
-**View rules**: no business state, no `t()`/`Strings.*` calls, no API calls, Wangs UI primitives only (no raw HTML controls, no raw HTML text elements — use `<Text>`), and every interactive/perceivable element carries its `aria-label`/`accessibilityLabel` per the Step 2 contract.
+**View rules**: no business state, no `t()`/`Strings.*` calls, no API calls, Wangs UI primitives only (no raw HTML controls, no raw HTML text elements — use `<Text>`), and every interactive/perceivable element carries its `aria-label`/`title`/`accessibilityLabel` per the Step 2 contract.
 
-**Selector-fulfillment gate (mandatory before calling this step done):** for every selector declared in the Step 2 Page Object, confirm the matching `aria-label`/`accessibilityLabel` (or `id`/`testID` for the rare native-id case) is actually present on the rendered element. This is a mechanical check — grep for it — not a matter of judgment.
+**Selector-fulfillment gate (mandatory before calling this step done):** for every selector declared in the Step 2 Page Object, confirm the matching `aria-label`/`title`/`accessibilityLabel` (or `id`/`testID` for the rare native-id case) is actually present on the rendered element. This is a mechanical check — grep for it — not a matter of judgment.
 
 After each section, run the `slicing-review` skill (report only — do not auto-fix without explicit instruction).
 
@@ -143,11 +144,11 @@ Verify: DataSource is imported only from the ViewModel (never the View), no `try
 
 ## Cross-Layer Contracts (Mandatory)
 
-| Contract                   | From → To          | Rule                                                                                                                          |
-| -------------------------- | ------------------ | ----------------------------------------------------------------------------------------------------------------------------- |
-| DTO = entity type          | Data → everywhere  | No separate model type is ever created.                                                                                       |
-| Selector fulfillment       | Test Contract → UI | Every `~name`/`#name` in the Page Object exists as `aria-label`/`accessibilityLabel`/`id`/`testID` on the rendered component. |
-| Fixture ↔ DataSource shape | Data → Test        | Fixtures match exactly what the DataSource function returns.                                                                  |
+| Contract                   | From → To          | Rule                                                                                                                                  |
+| -------------------------- | ------------------ | ------------------------------------------------------------------------------------------------------------------------------------- |
+| DTO = entity type          | Data → everywhere  | No separate model type is ever created.                                                                                               |
+| Selector fulfillment       | Test Contract → UI | Every `~name`/`#name` in the Page Object exists as `aria-label`/`title`/`accessibilityLabel`/`id`/`testID` on the rendered component. |
+| Fixture ↔ DataSource shape | Data → Test        | Fixtures match exactly what the DataSource function returns.                                                                          |
 
 ---
 

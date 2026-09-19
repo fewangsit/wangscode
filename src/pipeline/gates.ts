@@ -124,15 +124,26 @@ export function checkSelectorContract(repoRoot: string, contract: PageObjectCont
   }
   const missing: string[] = [];
   for (const sel of contract.requiredSelectors) {
+    // TestSpectra's real `~name` resolution (docs/v2/cli/selectors.md) checks THREE web
+    // sources in priority order: aria-labelledby, aria-label, title. `aria-labelledby`
+    // is deliberately NOT grepped here — its value is an id reference to another
+    // element's text content, not the accessible name itself, so a literal
+    // `aria-labelledby="${sel.name}"` grep would never match a real usage and would be
+    // actively misleading. `accessibilityLabel` stays for React Native — that's the JSX
+    // prop developers write; it compiles down to Android's `content-desc` / iOS's
+    // accessibility identifier at the platform level, but the source-level check is
+    // unaffected by that.
     const patterns =
-      sel.kind === "a11y" ? [`aria-label="${sel.name}"`, `accessibilityLabel="${sel.name}"`] : [`id="${sel.name}"`, `testID="${sel.name}"`];
+      sel.kind === "a11y"
+        ? [`aria-label="${sel.name}"`, `title="${sel.name}"`, `accessibilityLabel="${sel.name}"`]
+        : [`id="${sel.name}"`, `testID="${sel.name}"`];
     if (!patterns.some((p) => grepRecursive(uiDir, p))) missing.push(`${sel.kind}:${sel.name}`);
   }
   return missing.length === 0
     ? { ok: true }
     : {
         ok: false,
-        failureReport: `Missing selector attribute(s) in ${uiDir}: ${missing.join(", ")}. Every selector in the Page Object contract must exist as aria-label/accessibilityLabel (or id/testID for the rare native-id case) on the rendered component.`,
+        failureReport: `Missing selector attribute(s) in ${uiDir}: ${missing.join(", ")}. Every selector in the Page Object contract must exist as aria-label/title/accessibilityLabel (or id/testID for the rare native-id case) on the rendered component.`,
         classification: "ui-slice",
       };
 }

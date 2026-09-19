@@ -48,14 +48,14 @@ packages/features/[feature]/
 
 ## 4. View Checklist
 
-| Check                                                                                             | Rule                                                                                        |
-| ------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
-| No business state (`useState` for loading/error/data)                                             | Belongs in ViewModel                                                                        |
-| No `t()`/`Strings.*`/`formatDate()`                                                               | Resolved in ViewModel                                                                       |
-| No API calls                                                                                      | Never imports a DataSource                                                                  |
-| Wangs UI primitives only                                                                          | No raw HTML controls, no raw HTML text elements — use `<Text>`                              |
-| **Every interactive/perceivable element has `aria-label` (web) or `accessibilityLabel` (native)** | This is the a11y selector contract — not optional, and not satisfied by `data-testid` alone |
-| Top-level screen/tab components take no props                                                     | Shared state flows through React Context in `ui/context/`                                   |
+| Check                                                                                                     | Rule                                                                                        |
+| --------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
+| No business state (`useState` for loading/error/data)                                                     | Belongs in ViewModel                                                                        |
+| No `t()`/`Strings.*`/`formatDate()`                                                                       | Resolved in ViewModel                                                                       |
+| No API calls                                                                                              | Never imports a DataSource                                                                  |
+| Wangs UI primitives only                                                                                  | No raw HTML controls, no raw HTML text elements — use `<Text>`                              |
+| **Every interactive/perceivable element has `aria-label`/`title` (web) or `accessibilityLabel` (native)** | This is the a11y selector contract — not optional, and not satisfied by `data-testid` alone |
+| Top-level screen/tab components take no props                                                             | Shared state flows through React Context in `ui/context/`                                   |
 
 ## 5. DataSource & DTO
 
@@ -81,11 +81,11 @@ BLOCKER if: DataSource swallows an error and returns `null`; ViewModel doesn't c
 
 For every interactive or otherwise perceivable element, verify:
 
-- It has `aria-label` (web) / `accessibilityLabel` (native) set to a real, human-meaningful string — not a placeholder or the component's internal id.
+- It has `aria-label` (default), `title`, or `accessibilityLabel` (native) set to a real, human-meaningful string — not a placeholder or the component's internal id. (`aria-labelledby` also resolves on web, but its value is another element's `id`, not the name text — flag it in review by tracing the referenced element, not by grepping the name string directly.)
 - If the element genuinely cannot carry an accessible name (rare), it falls back to `id`/`testID` and this is called out explicitly in the review, not silently accepted.
 - The attribute value matches exactly what the feature's Page Object (`e2e/page-objects/`) expects.
 
-BLOCKER if a `data-testid`-only attribute is used for a test hook instead of `aria-label`/`accessibilityLabel`.
+BLOCKER if a `data-testid`-only attribute is used for a test hook instead of `aria-label`/`title`/`accessibilityLabel`.
 
 ## 8. Dependency Rules
 

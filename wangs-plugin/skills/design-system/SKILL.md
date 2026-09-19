@@ -66,12 +66,12 @@ Query `wangs-ui-querier` before using any prop you haven't verified — this app
 
 Every interactive or otherwise perceivable element must carry a real accessible name:
 
-| Platform     | Attribute            | Selector prefix (e2e) |
-| ------------ | -------------------- | --------------------- |
-| Web          | `aria-label`         | `~name`               |
-| React Native | `accessibilityLabel` | `~name`               |
+| Platform     | Attribute                                                                                     | Selector prefix (e2e) |
+| ------------ | --------------------------------------------------------------------------------------------- | --------------------- |
+| Web          | `aria-label` (default) — `aria-labelledby`/`title` also resolve, TestSpectra checks all three | `~name`               |
+| React Native | `accessibilityLabel`                                                                          | `~name`               |
 
-This is not a testing convenience layered on top of the design system — it **is** the design system's a11y baseline, and it happens to also be what the e2e Page Object contract (`docs/03-feature-pattern.md`) is built on. One attribute, two purposes. Never add a `data-testid`/`testID`-only attribute as a substitute — if a component has no accessible-name prop, confirm that via `wangs-ui-querier` first (don't assume), and only then fall back to `id`/`testID` (`#name` selector).
+This is not a testing convenience layered on top of the design system — it **is** the design system's a11y baseline, and it happens to also be what the e2e Page Object contract (`docs/03-feature-pattern.md`) is built on. One attribute, two purposes. Never add a `data-testid`/`testID`-only attribute as a substitute — if a component has no accessible-name prop, confirm that via `wangs-ui-querier` first (don't assume), and only then fall back to `id`/`testID` (`#name` selector). Default to `aria-label` when writing new components — `aria-labelledby` (references another element's text) and `title` exist as fallbacks TestSpectra also resolves, not alternatives to reach for by default.
 
 ---
 
