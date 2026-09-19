@@ -186,17 +186,42 @@ export function checkDependencyRules(repoRoot: string, featureSlug: string): Gat
   return violations.length === 0 ? { ok: true } : { ok: false, failureReport: violations.join("\n"), classification: "connect" };
 }
 
+/**
+ * "What We Deliberately Don't Have" (architecture-overview rule): this project has no
+ * Model/Domain layer. Mechanical existence check, not left to the model's own self-review —
+ * slicing-review's own BLOCKER rule for a model/ folder is otherwise unverified, since the
+ * same model that might create the folder while writing code is the one grading itself in
+ * the review phase. No `classification` set: the phase currently running is whichever phase
+ * just wrote the offending folder, so the default (retry the current phase) is correct.
+ */
+export function checkNoModelFolder(repoRoot: string, featureSlug: string): GateResult {
+  const modelDir = path.join(repoRoot, "packages", "features", featureSlug, "model");
+  if (!fs.existsSync(modelDir)) return { ok: true };
+  return {
+    ok: false,
+    failureReport: `A model/ folder exists at ${modelDir} — this project has no Model/Domain layer (see the architecture-overview rule). Entity types are redundant (the DTO in data/dto/ already is the entity type); a validator shared across screens belongs in ui/validators/ per the feature-pattern rule's placement table, not here. Delete this folder and move its contents to the correct place.`,
+  };
+}
+
 export function runGate(phase: PhaseName, ctx: { repoRoot: string; featureSlug: string }, artifact?: unknown): GateResult {
   switch (phase) {
     case "requirements":
       return { ok: true }; // gated by the internal gap-check loop itself, not here
-    case "data-layer":
+    case "data-layer": {
+      const noModel = checkNoModelFolder(ctx.repoRoot, ctx.featureSlug);
+      if (!noModel.ok) return noModel;
       return runTypeCheck(ctx.repoRoot);
+    }
     case "test-contract":
       return runSpectraSyncTypes(ctx.repoRoot);
-    case "ui-slice":
+    case "ui-slice": {
+      const noModel = checkNoModelFolder(ctx.repoRoot, ctx.featureSlug);
+      if (!noModel.ok) return noModel;
       return artifact ? checkSelectorContract(ctx.repoRoot, artifact as PageObjectContract) : { ok: true };
+    }
     case "connect": {
+      const noModel = checkNoModelFolder(ctx.repoRoot, ctx.featureSlug);
+      if (!noModel.ok) return noModel;
       const tc = runTypeCheck(ctx.repoRoot);
       if (!tc.ok) return tc;
       return checkDependencyRules(ctx.repoRoot, ctx.featureSlug);

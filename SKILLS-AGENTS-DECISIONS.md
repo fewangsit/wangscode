@@ -182,17 +182,38 @@ juga sengaja dihindari — itu persis yang menyebabkan drift yang baru ditemukan
 section "Top-Level Screens and Tabs Must Not Accept Props" yang tidak ada di versi manapun
 (termasuk sebelum migrasi ini) — referensi menggantung lama yang tidak terkait migrasi ini.
 
+## 11. Gate mekanis baru: `checkNoModelFolder` — cek folder `model/` tidak lagi cuma self-review
+
+**Status: DIPUTUSKAN.** Menutup gap yang ditemukan waktu menjelaskan "gimana agent ini bisa
+memaksa patuh": aturan BLOCKER "folder `model/` tidak boleh ada" di skill `slicing-review`
+sebelumnya cuma dicek lewat laporan JSON yang **model itu sendiri** tulis di fase `review`
+(`findings.filter(f => f.severity === "BLOCKER")`) — tidak ada verifikasi independen. Kalau model
+bikin folder `model/` lalu gagal menandainya sendiri saat review, tidak ada yang menangkap.
+
+Ditambahkan `checkNoModelFolder()` di `gates.ts` — `fs.existsSync` murni, pola sama persis dengan
+`checkDependencyRules` yang sudah ada. Dipasang di tiga fase yang menulis file
+(`data-layer`, `ui-slice`, `connect`) sebelum gate spesifik fase itu sendiri; tidak set
+`classification` eksplisit supaya default rewind ke fase yang sedang berjalan (fase yang baru
+menulis foldernya) tetap benar.
+
+Diverifikasi nyata (bukan cuma type-check): fixture dengan folder `model/` sungguhan →
+`{"ok":false, ...}`; setelah dihapus → `{"ok":true}`.
+
+**Penempatan validator tetap tidak digarap** (lihat daftar terbuka di bawah) — lebih rumit
+(butuh hitung jumlah screen pemakai, bukan sekadar exists-check) dan belum ada fitur nyata yang
+memakai skema validator baru, jadi belum ada bukti butuh.
+
 ---
 
 ## Terbuka / belum ditindaklanjuti
 
 Hal-hal yang sudah diajukan tapi user belum memutuskan — jangan diasumsikan disetujui:
 
-- **Perluasan gate mekanis di `gates.ts`** — saya usulkan menambah grep nyata untuk hal yang
-  sekarang cuma soft-enforced lewat skill/rules (mis. keberadaan folder `model/`, lokasi
-  validator relatif ke jumlah screen pemakainya) — pola sama dengan
-  `checkSelectorContract`/`checkDependencyRules` yang sudah ada. User belum merespons usulan
-  konkretnya.
+- **Gate mekanis untuk penempatan validator** — beda dari cek folder `model/` (§11, sudah
+  selesai), ini butuh menghitung berapa screen yang meng-import satu file validator untuk tahu
+  apa dia sudah di tier yang benar — bukan sekadar exists-check. Sengaja ditunda: belum ada
+  fitur nyata yang pakai skema validator 3-tingkat ini, jadi belum ada bukti konkret butuh gate
+  ini sekarang (lihat prinsip "jangan desain untuk kasus hipotetis").
 - **§6 di atas** (bundel 8 skill `@wangs-ui/skills`) — rekomendasi "jangan" sudah diberikan,
   belum ada konfirmasi final.
 - **§9 di atas** (`i18n-usage` naik jadi primary rule) — rekomendasi "jangan, tetap eksternal"
