@@ -3,6 +3,7 @@ import { fileURLToPath } from "node:url";
 
 import type { CanUseTool, Options } from "@anthropic-ai/claude-agent-sdk";
 
+import { CODING_RULES } from "./coding-rules.ts";
 import { WANGS_PERSONA_APPEND } from "./persona.ts";
 import type { FeatureBuildController } from "./slash-commands.ts";
 import { createFeatureBuildMcpServer } from "./feature-build-tool.ts";
@@ -38,10 +39,13 @@ export function buildSessionOptions(cwd: string, canUseTool: CanUseTool, feature
     // sdk.d.ts) instead of .claude/agents/*.md files a consumer repo would
     // otherwise have to carry — see subagents.ts.
     agents: WANGS_SUBAGENTS,
+    // CODING_RULES (rules/*.md, loaded via coding-rules.ts) are primary rules,
+    // not discoverable skills — appended directly here so they're always in
+    // context rather than gated behind the model deciding to invoke a skill.
     systemPrompt: {
       type: "preset",
       preset: "claude_code",
-      append: WANGS_PERSONA_APPEND,
+      append: `${WANGS_PERSONA_APPEND}\n\n${CODING_RULES}`,
       snapshot: true,
     },
     // Interactive terminal, a human is present — canUseTool prompts them
