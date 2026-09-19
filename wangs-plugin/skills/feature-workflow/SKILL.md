@@ -7,7 +7,7 @@ description: End-to-end feature development workflow orchestrating the two layer
 
 Use this skill whenever a new feature is built from scratch, or a complete slice (data → test-contract → ui) lands in `packages/features/`. This skill orchestrates the layer-specific rules and enforces the correct execution order.
 
-**CRITICAL:** Before creating new files, restructuring an app, or implementing a new feature, read `docs/01-overview.md` and `docs/03-feature-pattern.md` in the target project first.
+**CRITICAL:** The `architecture-overview` and `feature-pattern` rules (bundled, always in context — no need to `Read` anything from the target project) cover the two-layer architecture and folder structure in full. Keep to them before creating new files, restructuring an app, or implementing a new feature.
 
 **This project has exactly two code layers: Data and UI.** There is no separate Model/Domain/Entity layer — the DTO type returned by the API (as defined by the OpenAPI spec) travels unchanged through DataSource → ViewModel → View. No mappers, no `XEntity → XDto → XViewModel` chains, no `model/` folder. If you find yourself creating a `model/` folder, stop; the type you need already exists as the DTO from the Data layer.
 
@@ -71,7 +71,7 @@ testing, following its Nx-monorepo convention exactly.
 - `e2e/fixtures/*.json` — one fixture per endpoint (success/error/edge), consumed as
   `Fixture.<camelCaseFileName>`
 
-**Selector rule (mandatory — see `docs/03-feature-pattern.md`, and TestSpectra's own
+**Selector rule (mandatory — see the `feature-pattern` rule, and TestSpectra's own
 `docs/v2/cli/selectors.md` for the full resolution contract):**
 
 | Selector | Meaning          | Web attribute                                                       | React Native attribute | When to use                                                                                                                                                                                                                          |

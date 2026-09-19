@@ -7,13 +7,12 @@ description: Systematic review protocol for newly created features in packages/f
 
 Use whenever a new screen/ViewModel/DataSource lands in `packages/features/`, or the user asks to review/audit a feature against the docs.
 
-## 1. Read the Architecture Docs First
+## 1. Architecture Rules (Already Loaded — Nothing to Read)
 
-```
-docs/01-overview.md         — dependency rules & the two-layer map (Data, UI)
-docs/03-feature-pattern.md  — folder structure, ViewModel/View/DataSource rules, a11y selector contract
-docs/10-conventions.md      — naming, import order, checklists
-```
+The `architecture-overview` (dependency rules & the two-layer map), `feature-pattern` (folder
+structure, ViewModel/View/DataSource rules, a11y selector contract), and `conventions` (naming,
+import order, checklists) rules are primary rules, bundled and always in context for this
+review — not files to fetch from the target project.
 
 ## 2. Map the Feature's File Tree
 
@@ -32,7 +31,7 @@ packages/features/[feature]/
         └── [Screen].tsx
 ```
 
-**Flag immediately as a BLOCKER if a `model/` folder exists anywhere in the feature.** This project has no Model layer (see `docs/01-overview.md`) — a `model/` folder is either leftover from a stale template or a misunderstanding of the pattern.
+**Flag immediately as a BLOCKER if a `model/` folder exists anywhere in the feature.** This project has no Model layer (see the `architecture-overview` rule) — a `model/` folder is either leftover from a stale template or a misunderstanding of the pattern.
 
 ## 3. ViewModel Checklist
 

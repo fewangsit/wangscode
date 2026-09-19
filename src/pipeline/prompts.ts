@@ -28,7 +28,7 @@ OpenAPI spec: ${bundle.openApiPath}
 ${bundleBlock(bundle)}
 
 Generate:
-- data/dto/index.ts — types matching the OpenAPI spec exactly, one \`// Source: <method> <path> — openapi.yaml\` comment per type. The DTO IS the entity type — do not create a separate model/entity file (see docs/01-overview.md).
+- data/dto/index.ts — types matching the OpenAPI spec exactly, one \`// Source: <method> <path> — openapi.yaml\` comment per type. The DTO IS the entity type — do not create a separate model/entity file (see the architecture-overview rule already in context).
 - data/datasource/*RemoteDataSource.ts — pure async functions using \`http\` from \`${scope}/infrastructure/http\`. Never swallow an error.
 
 Stop when the files are written. Do not run the type-checker yourself — the orchestrator runs it after you finish. Test fixtures belong to the next phase (test-contract), not this one — do not write anything under e2e/ here.`;
@@ -67,9 +67,10 @@ Write, following TestSpectra's real Nx-monorepo convention exactly:
   }
   \`\`\`
 - packages/features/${featureSlug}/e2e/page-objects/<ScreenName>Page/web.ts — one Page Object class per
-  screen, a default-exported singleton instance. Selectors via \`Spectra.get('~name')\` (aria-label /
-  accessibilityLabel) by default — see docs/03-feature-pattern.md. Only fall back to \`Spectra.get('#name')\`
-  (native id) for an element with no accessible name.
+  screen, a default-exported singleton instance. Selectors via \`Spectra.get('~name')\` (aria-label,
+  aria-labelledby, or title on web; accessibilityLabel on native) by default — see the feature-pattern
+  rule already in context. Only fall back to \`Spectra.get('#name')\` (native id) for an element with no
+  accessible name.
 - packages/features/${featureSlug}/e2e/specs/<Suite>/suite.md + <Suite>/<TC-ID>/{spec.md,web.test.ts} — one
   E2E test case per Test Case scenario in the bundle above. Do not invent scenarios not present in Test
   Cases. Each web.test.ts is 100% zero-import: no \`import\` statements, no \`describe\` wrapper, exactly one
