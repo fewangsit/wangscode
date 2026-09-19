@@ -594,7 +594,7 @@ sequenceDiagram
     participant U as Terminal
     participant CLI as cli.ts
     participant REPL as repl.ts
-    participant OPT as session-options.ts
+    participant SESSOPT as session-options.ts
     participant Q as AsyncInputQueue
     participant SDK as query() session
     participant FBC as FeatureBuildController
@@ -602,8 +602,8 @@ sequenceDiagram
     U->>CLI: npx wangs-agent --project=.
     CLI->>REPL: runRepl({ cwd })
     REPL->>FBC: new FeatureBuildController(rl, cwd)
-    REPL->>OPT: buildSessionOptions(cwd, canUseTool, FBC)
-    OPT-->>REPL: Options (agents, plugins, mcpServers, persona)
+    REPL->>SESSOPT: buildSessionOptions(cwd, canUseTool, FBC)
+    SESSOPT-->>REPL: Options (agents, plugins, mcpServers, persona)
     REPL->>SDK: query({ prompt: inputQueue, options })
     REPL->>U: "> " prompt
     loop every keystroke line
