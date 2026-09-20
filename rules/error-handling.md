@@ -116,7 +116,7 @@ React's error boundary catches rendering errors. Add an `ErrorBoundary` at the a
 ```tsx
 // apps/web/App.tsx
 <ErrorBoundary fallback={<ErrorScreen />}>
-  <NavigationProvider>...</NavigationProvider>
+  <Router>...</Router> {/* from @wangs-ui/react-navigation/web — see rules/navigation.md */}
 </ErrorBoundary>
 ```
 

@@ -59,7 +59,7 @@ const deleteCatalogItem = async (id: string) => {
   setIsDeleting(true);
   try {
     await deleteCatalogItemById(id);
-    void navigate(Routes.Catalog.List);
+    navigator.push(CatalogList);
   } catch (error) {
     setErrorMessage(error instanceof Error ? error.message : Strings.ERROR_GENERIC);
   } finally {

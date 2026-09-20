@@ -50,7 +50,7 @@ Rules: returns a typed value or throws (no silent `try/catch`); types come from 
 - No JSX returned.
 - No direct API calls — DataSource functions only.
 - Strings resolved here via `t(Strings.KEY)`, passed to the View as plain values.
-- Navigation (`useNavigate`) lives here.
+- Navigation (`useNavigation()` from `@wangs-ui/react-navigation` — see `rules/navigation.md`) lives here.
 - Platform-agnostic imports only — no `@wangs-ui/react-core`, `@wangs-ui/react-icons`, `react-native`. Use cross-platform subpaths (`@wangs-ui/form/react`, `@wangs-ui/react-i18n`) or move the dependency into the View.
 - Errors caught and mapped to `errorMessage: string | null`.
 
@@ -58,7 +58,7 @@ Rules: returns a typed value or throws (no silent `try/catch`); types come from 
 
 - No `useState`/`useEffect` except pure UI state (hover, focus, animation toggle).
 - No `t()`, `Strings.*`, `formatDate()` — the ViewModel already resolved these.
-- No API calls, no `navigate()`.
+- No API calls, no `useNavigation()`/`navigator.push`/`replace`/`pop` calls.
 - Wangs UI primitives only — no raw HTML controls, no raw HTML text elements (`<h1>`–`<h6>`, `<p>`, `<span>` for copy — use `<Text>` from `@wangs-ui/foundation/theme`).
 - **Every interactive/perceivable element carries a real accessible name with a real, human-meaningful value.** This is not optional and is not satisfied by a `data-testid`-only attribute.
 
@@ -82,9 +82,11 @@ The e2e Page Object is authored against accessibility attributes, matching TestS
 
 ## Cross-Feature Navigation
 
+See `rules/navigation.md` for the full API. In short:
+
 ```typescript
 // Correct
-void navigate(Routes.Catalog.List);
+navigator.push(CatalogList);
 // Wrong
 import { CatalogListScreen } from "@wangs-foundation/feature-catalog/ui/screens/CatalogList";
 ```
@@ -93,5 +95,5 @@ import { CatalogListScreen } from "@wangs-foundation/feature-catalog/ui/screens/
 
 ```typescript
 // packages/features/catalog/index.ts
-export { featureCatalogGraph } from "./graph"; // route registration only
+export { featureCatalogGraph } from "./graph"; // composable/navigation registrations only — see rules/navigation.md
 ```

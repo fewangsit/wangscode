@@ -35,7 +35,7 @@ Data access code (DataSource, DTO) lives **inside the feature that owns it**. Wh
 | `infrastructure` | `core`                                           | `features/*`, `apps/*`        |
 | `core`           | Nothing                                          | Everything else               |
 
-Features communicate through navigation only — never by importing each other's screens.
+Features communicate through navigation only — never by importing each other's screens. See `rules/navigation.md` for the concrete API (`@wangs-ui/react-navigation`).
 
 ## What We Deliberately Don't Have
 

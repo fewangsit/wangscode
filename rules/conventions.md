@@ -20,14 +20,15 @@ Naming, file structure, import order, and lint rules. Consistent conventions red
 
 ### Variables and Functions
 
-| What                              | Convention                               | Example                               |
-| --------------------------------- | ---------------------------------------- | ------------------------------------- |
-| React components                  | `PascalCase`                             | `function LoginPassword()`            |
-| Hooks                             | `camelCase`, prefix `use`                | `useLoginPasswordViewModel`           |
-| Constants (strings, route values) | `UPPER_SNAKE_CASE`                       | `TITLE_LOGIN`, `Routes.SsoAuth.Login` |
-| TypeScript types                  | `PascalCase`, suffix `Dto` for API types | `LoginPasswordBodyDto`                |
-| Boolean state                     | `is`, `has`, `can` prefix                | `isLoading`, `hasError`, `canSubmit`  |
-| Event handlers                    | `on` prefix                              | `onSubmit`, `onCancel`, `onDismiss`   |
+| What                                      | Convention                               | Example                                                    |
+| ----------------------------------------- | ---------------------------------------- | ---------------------------------------------------------- |
+| React components                          | `PascalCase`                             | `function LoginPassword()`                                 |
+| Hooks                                     | `camelCase`, prefix `use`                | `useLoginPasswordViewModel`                                |
+| String constants                          | `UPPER_SNAKE_CASE`                       | `TITLE_LOGIN`                                              |
+| Route values (`staticRoute`/`paramRoute`) | `PascalCase`                             | `CatalogList`, `CatalogDetail` — see `rules/navigation.md` |
+| TypeScript types                          | `PascalCase`, suffix `Dto` for API types | `LoginPasswordBodyDto`                                     |
+| Boolean state                             | `is`, `has`, `can` prefix                | `isLoading`, `hasError`, `canSubmit`                       |
+| Event handlers                            | `on` prefix                              | `onSubmit`, `onCancel`, `onDismiss`                        |
 
 ---
 
@@ -43,8 +44,8 @@ Blank line between each group. Single quotes only.
 
 ```typescript
 import { useFormControl } from "@wangs-ui/form/react";
-import { useNavigate } from "@wangs-foundation/infrastructure/navigation";
-import { Routes } from "@wangs-foundation/core/routes";
+import { useNavigation } from "@wangs-ui/react-navigation/web";
+import { CatalogList } from "@wangs-foundation/core/routes/catalog";
 
 import Strings from "../../../resources/Strings";
 import { loginWithPassword } from "../../../data";
@@ -92,7 +93,7 @@ Before committing a ViewModel, verify:
 - [ ] No `window`, `document`, or native-only APIs imported
 - [ ] All strings resolved from `Strings.*` (View never calls `t()`)
 - [ ] All dates and numbers formatted before returning
-- [ ] `navigate()` called here, not in the View
+- [ ] `navigator.push`/`replace`/`pop` called here, not in the View — see `rules/navigation.md`
 - [ ] All `useEffect` dependency arrays complete
 - [ ] `void` prefix on all unhandled promises
 
@@ -102,7 +103,7 @@ Before committing a View, verify:
 
 - [ ] No `useState` for business state (loading, error, data)
 - [ ] No `t()`, `Strings.*`, or `formatDate()` calls
-- [ ] No direct `navigate()` calls
+- [ ] No `useNavigation()`/`navigator.push`/`replace`/`pop` calls
 - [ ] No API calls (`fetch`, `axios`, `useMutation`)
 - [ ] Only UI-only state is allowed: hover, focus, scroll position, animation toggle
 
