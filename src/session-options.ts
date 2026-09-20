@@ -1,5 +1,4 @@
 import path from "node:path";
-import { fileURLToPath } from "node:url";
 
 import type { CanUseTool, Options } from "@anthropic-ai/claude-agent-sdk";
 
@@ -8,13 +7,8 @@ import { WANGS_PERSONA_APPEND } from "./persona.ts";
 import type { FeatureBuildController } from "./slash-commands.ts";
 import { createFeatureBuildMcpServer } from "./feature-build-tool.ts";
 import { WANGS_SUBAGENTS } from "./subagents.ts";
+import { PACKAGE_ROOT } from "./package-root.ts";
 
-// One level up from this module's own file (src/ in dev via tsx, dist/ once
-// built) always lands on the wangs-agent package root — so this resolves
-// correctly whether run from source or from an installed npm package,
-// regardless of the caller's cwd (which is the target *project*, not
-// wangs-agent itself).
-const PACKAGE_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const WANGS_PLUGIN_ROOT = path.join(PACKAGE_ROOT, "wangs-plugin");
 
 // Builds the Options object for the one long-lived `query()` call the REPL

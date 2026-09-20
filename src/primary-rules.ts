@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
+
+import { PACKAGE_ROOT } from "./package-root.ts";
 
 // "Rules utama" (per user directive), not skills: unlike wangs-plugin/'s SKILL.md
 // files (discoverable, model decides whether to invoke), this content is meant
@@ -19,15 +20,12 @@ import { fileURLToPath } from "node:url";
 // (no per-project business content), and having two copies of the same
 // selector-contract table (one here, one in each project's docs/) had
 // already drifted once before this move.
-//
-// Same package-root resolution trick as session-options.ts's WANGS_PLUGIN_ROOT
-// — works whether run from source (src/) or from an installed package (dist/).
-const PACKAGE_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const RULES_DIR = path.join(PACKAGE_ROOT, "rules");
 
 const RULE_FILES = [
   "architecture-overview.md",
   "packages.md",
+  "navigation.md",
   "feature-pattern.md",
   "data-and-server-state.md",
   "error-handling.md",

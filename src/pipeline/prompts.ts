@@ -1,3 +1,4 @@
+import { readSkill, readSkillSection } from "./skill-content.ts";
 import type { PageObjectContract, PhaseName, RequirementBundle } from "./types.ts";
 
 function bundleBlock(bundle: RequirementBundle): string {
@@ -20,7 +21,11 @@ function bundleBlock(bundle: RequirementBundle): string {
 }
 
 export function buildDataLayerPrompt(featureSlug: string, bundle: RequirementBundle, scope: string): string {
-  return `Follow the \`feature-workflow\` skill's Step 1 (Data Layer) and the \`data-sources\` rule exactly.
+  return `${readSkillSection("feature-workflow", "Step 1 — Data Layer")}
+
+${readSkillSection("feature-workflow", "Cross-Layer Contracts (Mandatory)")}
+
+---
 
 Feature: "${featureSlug}" at packages/features/${featureSlug}/
 OpenAPI spec: ${bundle.openApiPath}
@@ -35,8 +40,15 @@ Stop when the files are written. Do not run the type-checker yourself — the or
 }
 
 export function buildTestContractPrompt(featureSlug: string, bundle: RequirementBundle): string {
-  return `Follow the \`feature-workflow\` skill's Step 2 (Test Contract) exactly. This project uses TestSpectra
-(\`@testspectra/cli\`) — real, zero-import ambient-global E2E/component testing, not a generic framework.
+  return `${readSkillSection("feature-workflow", "Step 2 — Test Contract")}
+
+${readSkillSection("feature-workflow", "Cross-Layer Contracts (Mandatory)")}
+
+---
+
+${readSkill("component-spliting")}
+
+---
 
 Feature: "${featureSlug}" — its E2E project lives at packages/features/${featureSlug}/e2e/ (a project
 of its own, separate from the feature library package).
@@ -104,7 +116,19 @@ selector contract for the primary screen you just authored. No prose, no markdow
 }
 
 export function buildUiSlicePrompt(featureSlug: string, bundle: RequirementBundle, contract: PageObjectContract): string {
-  return `Follow the \`feature-workflow\` skill's Step 3 (UI Slice), the \`design-system\` skill, and the \`component-spliting\` skill exactly.
+  return `${readSkillSection("feature-workflow", "Step 3 — UI Slice")}
+
+${readSkillSection("feature-workflow", "Cross-Layer Contracts (Mandatory)")}
+
+---
+
+${readSkill("design-system")}
+
+---
+
+${readSkill("component-spliting")}
+
+---
 
 Feature: "${featureSlug}" at packages/features/${featureSlug}/
 
@@ -125,7 +149,11 @@ Stop when the files are written. Do not grep for the selectors yourself — the 
 }
 
 export function buildConnectPrompt(featureSlug: string, bundle: RequirementBundle): string {
-  return `Follow the \`feature-workflow\` skill's Step 4 (Connect) exactly.
+  return `${readSkillSection("feature-workflow", "Step 4 — Connect")}
+
+${readSkillSection("feature-workflow", "Cross-Layer Contracts (Mandatory)")}
+
+---
 
 Feature: "${featureSlug}" at packages/features/${featureSlug}/
 
@@ -137,7 +165,11 @@ Stop when the files are updated. Do not run the type-checker or the dependency-r
 }
 
 export function buildReviewPrompt(featureSlug: string): string {
-  return `Run the \`slicing-review\` skill against packages/features/${featureSlug}/ in full — all 10 sections (folder tree, ViewModel checklist, View checklist, DataSource/DTO, error flow, a11y selector contract, dependency rules, naming, cross-platform, index.ts).
+  return `${readSkill("slicing-review")}
+
+---
+
+Run the review above against packages/features/${featureSlug}/ in full — all 10 sections (folder tree, ViewModel checklist, View checklist, DataSource/DTO, error flow, a11y selector contract, dependency rules, naming, cross-platform, index.ts).
 
 Report ONLY — do not fix anything. Respond with ONLY the JSON object described by the output schema, one entry per finding (BLOCKER/WARNING/INFO), \`rule\` naming which slicing-review section/violation it is (e.g. "V6 — Raw HTML Controls"). No prose, no markdown fences. Empty \`findings\` array if there is nothing to report.`;
 }
