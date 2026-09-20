@@ -1,8 +1,8 @@
 import type { SDKUserMessage } from "@anthropic-ai/claude-agent-sdk";
 
-// Bridges readline's event-driven 'line' events into the AsyncIterable<SDKUserMessage>
-// `query()` expects when `prompt` is a stream — this is what keeps the SDK session
-// alive across the whole REPL lifetime instead of restarting per message (see
+// Bridges the TUI input router's event-driven line submissions (see tui/input-router.ts) into the
+// AsyncIterable<SDKUserMessage> `query()` expects when `prompt` is a stream — this is what keeps
+// the SDK session alive across the whole REPL lifetime instead of restarting per message (see
 // sdk.d.ts:5847-5861 for SDKUserMessage's real required shape: type, message,
 // parent_tool_use_id — everything else optional).
 export class AsyncInputQueue implements AsyncIterable<SDKUserMessage> {

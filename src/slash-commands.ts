@@ -1,5 +1,3 @@
-import type readline from "node:readline";
-
 import { runFeatureBuildPipeline } from "./pipeline/index.ts";
 import type { FeatureBuildResult } from "./pipeline/index.ts";
 import type { PendingFeatureBuild } from "./types.ts";
@@ -52,7 +50,7 @@ export class FeatureBuildController {
   private busy = false;
 
   constructor(
-    private readonly rl: readline.Interface,
+    private readonly askLine: (prompt: string) => Promise<string>,
     private readonly project: string,
   ) {}
 
@@ -107,10 +105,9 @@ export class FeatureBuildController {
     this.pending = result.status === "needs_input" ? { featureSlug, project: this.project, awaitingAnswer: true } : null;
   }
 
-  private ask(question: string): Promise<string> {
-    return new Promise((resolve) => {
-      this.rl.question(question, (line) => resolve(line.trim()));
-    });
+  private async ask(question: string): Promise<string> {
+    const line = await this.askLine(question);
+    return line.trim();
   }
 
   private async runInteractivePrompt(print: (text: string) => void): Promise<void> {

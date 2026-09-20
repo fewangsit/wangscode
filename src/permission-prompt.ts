@@ -1,14 +1,6 @@
-import readline from "node:readline";
-
 import type { CanUseTool, PermissionResult } from "@anthropic-ai/claude-agent-sdk";
 
-function askYesNo(rl: readline.Interface, question: string): Promise<boolean> {
-  return new Promise((resolve) => {
-    rl.question(question, (answer) => {
-      resolve(answer.trim().toLowerCase() === "y" || answer.trim().toLowerCase() === "yes");
-    });
-  });
-}
+import type { InputRouter } from "./tui/input-router.ts";
 
 // v1 scope, intentionally not over-built: one blocking y/n prompt per tool
 // call (bare Enter always denies, regardless of the SDK's defaultToNo hint —
@@ -16,15 +8,13 @@ function askYesNo(rl: readline.Interface, question: string): Promise<boolean> {
 // (PermissionUpdate exists in the SDK for that later). Never resolves to
 // `null` — the SDK docs warn that fails closed and blocks indefinitely.
 //
-// Requests are serialized through a queue: readline.question() is not
-// reentrant — a subagent (or several parallel tool calls) can trigger
-// several canUseTool invocations close together, and firing rl.question()
-// again before the previous one's callback resolves corrupts readline's
-// internal state (confirmed live: overlapping prompts, and the user's
-// answer to one landing as a normal chat message instead). Each request
-// waits for the previous one to be fully answered before its own prompt
-// appears.
-export function makeCanUseTool(rl: readline.Interface): CanUseTool {
+// Requests are serialized through a queue: `router.askLine()` only tracks one
+// active prompt at a time — a subagent (or several parallel tool calls) can
+// trigger several canUseTool invocations close together, and firing a second
+// askLine() before the first one's promise resolves would silently drop the
+// first prompt's own resolver. Each request waits for the previous one to be
+// fully answered before its own prompt appears.
+export function makeCanUseTool(router: InputRouter): CanUseTool {
   let queue: Promise<unknown> = Promise.resolve();
 
   return (toolName, input, opts): Promise<PermissionResult> => {
@@ -34,10 +24,10 @@ export function makeCanUseTool(rl: readline.Interface): CanUseTool {
       }
 
       const label = opts.title ?? `${toolName} ${JSON.stringify(input)}`;
-      const answered = await askYesNo(rl, `\nAllow ${label}? [y/N] `);
-      rl.prompt();
+      const answer = await router.askLine(`Allow ${label}? [y/N]`);
+      const allowed = answer.trim().toLowerCase() === "y" || answer.trim().toLowerCase() === "yes";
 
-      if (answered) return { behavior: "allow", updatedInput: input };
+      if (allowed) return { behavior: "allow", updatedInput: input };
       return { behavior: "deny", message: "User declined this tool call." };
     });
 
