@@ -233,6 +233,96 @@ penuh, dinilai satu-satu, dipilih user untuk eksekusi 4 yang paling aman dulu.
 
 ---
 
+## 13. `rules/navigation.md` — bundel, tapi API-nya bukan dari `06-navigation.md` tagsamurai sama sekali
+
+**Status: DIPUTUSKAN.** Menutup item terbuka §12 soal `06-navigation.md` — tapi bukan dengan cara
+yang diperkirakan semula ("tulis ulang dari `FeatureGraphBuilder.ts` asli"). Sebagai gantinya,
+user minta navigasi diekstrak jadi package standalone baru (`@wangs-ui/react-navigation`, di
+`/Volumes/Home/Documents/wangs-ui-react-navigation`) — dikerjakan lewat sesi terpisah yang panjang
+(plan mode, iterasi desain berkali-kali) sebelum akhirnya dibundel ke sini.
+
+**Kenapa bukan tagsamurai atau wangs-monorepo-foundation punya**: keduanya sudah dicek langsung —
+tagsamurai (`NavigationGraph.ts`/`StackNavigator.tsx`) punya bug nyata (shape context Native beda
+dari Web, tidak ada `replace`, tidak pernah diekspor); wangs-monorepo-foundation punya versi yang
+jauh lebih sederhana dan Web-only, tanpa dukungan Native sama sekali. `@wangs-ui/react-navigation`
+dibangun dari nol berdasarkan pola tagsamurai tapi dengan 3 bug nyata diperbaiki (shape parity,
+`StackActions.replace` asli, `flattenRoutes` tidak lagi men-double-prefix child path yang sudah
+fully-qualified), plus fitur baru yang tidak ada di source manapun:
+
+- DSL `composable`/`navigation`/`buildGraph` (functional, bukan builder OOP) — user eksplisit
+  minta gaya `pipe`/`chain` (fp-ts-like), lalu direname jadi `buildGraph` karena "pipe" cuma
+  contoh, bukan nama final yang diminta.
+- `startDestination` di `navigation()`, meniru Compose — Native **sengaja tetap flat** satu
+  `Stack.Navigator` (bukan nested navigator), karena Compose sendiri flat di baliknya; nested
+  navigator asli React Navigation justru akan menghidupkan lagi masalah `replace` lintas-graph
+  yang tidak ada solusi bersih di React Navigation.
+- `staticRoute`/`paramRoute` — route jadi value bertipe (mirip `data object`/`data class` Kotlin),
+  bukan string path lepas. Ini alasan utama kenapa `packages.md`/`feature-pattern.md`/
+  `conventions.md` ikut direvisi (contoh lama `Routes.Catalog.List` + `navigate()` string-based
+  sudah tidak valid).
+
+**Yang dibundel**: `rules/navigation.md` (baru) ke `RULE_FILES` di `primary-rules.ts`, plus revisi
+di `architecture-overview.md`, `packages.md`, `feature-pattern.md`, `conventions.md`,
+`data-and-server-state.md`, `error-handling.md` — semua contoh kode navigasi lama (`useNavigate`,
+`navigate(Routes.X.Y)`, `FeatureGraphBuilder`) diganti API nyata `@wangs-ui/react-navigation`.
+Dipublish sebagai `wangs-agent@0.4.3` ke Verdaccio lokal.
+
+**Belum diverifikasi** (diwariskan dari pengembangan package-nya sendiri): tidak ada klik-through
+browser atau tap-through Expo Go nyata terhadap `@wangs-ui/react-navigation` — verifikasi cuma
+sampai type-check + build + unit test terhadap package yang benar-benar dipublish. Kalau pipeline
+`wangs-agent` mulai menghasilkan kode yang memakai rule ini, perilaku runtime-nya masih perlu
+dibuktikan lewat feature nyata, bukan diasumsikan benar dari dokumentasi.
+
+---
+
+## 14. Bug nyata: prompt pipeline nunjuk ke skill yang gak pernah bisa dimuat — diganti jadi injeksi konten langsung
+
+**Status: DIPUTUSKAN.** User tanya balik soal §13 ("feature-workflow apa masih perlu, kan workflow
+udah jadi core, bukan optional lagi") — jawabannya justru menemukan bug nyata, bukan sekadar
+pertanyaan filosofis.
+
+**Temuan**: `src/pipeline/agent-runner.ts` (headless pipeline: data-layer, test-contract, ui-slice,
+connect, review) **sama sekali tidak punya field `plugins` di `Options`-nya** — beda dari
+`session-options.ts` (chat interaktif) yang punya `plugins: [{type: "local", path:
+WANGS_PLUGIN_ROOT}]`. Tapi `src/pipeline/prompts.ts` men-generate prompt tiap fase dengan kalimat
+seperti _"Follow the `feature-workflow` skill's Step 1 exactly"_ atau _"Run the `slicing-review`
+skill"_ — instruksi yang menunjuk ke skill yang **tidak mungkin ditemukan/dimuat model** di
+panggilan headless itu, karena plugin bundle-nya emang gak pernah didaftarkan di sana. Ditemukan
+juga bug kedua di tempat yang sama: `buildDataLayerPrompt` menyebut "the `data-sources` rule" —
+rule dengan nama itu tidak pernah ada (yang benar `data-and-server-state`).
+
+**Kenapa ini bug, bukan cuma gaya**: baris komentar `agent-runner.ts` sendiri bilang _"control flow
+must live in code the model cannot talk its way around"_ — instruksi "follow skill X" yang gak
+bisa dijangkau model itu justru kebalikan dari prinsip itu sendiri: kepatuhan terhadap Step 1-4
+`feature-workflow` selama ini bergantung ke referensi yang mengarah ke tempat kosong.
+
+**Fix yang dipilih** (dari 2 opsi yang ditawarkan — user pilih ini, bukan sekadar tambah `plugins:
+[...]` ke `agent-runner.ts`): `src/pipeline/skill-content.ts` (baru) baca langsung isi skill dari
+disk dan suntik ke string prompt, persis pola `readRule()` di `primary-rules.ts` tapi granular per
+section (`readSkillSection(skill, heading)` ekstrak satu `## Heading` sampai heading berikutnya;
+`readSkill(skill)` ambil seluruh file, frontmatter YAML dibuang). Setiap `buildXPrompt` di
+`prompts.ts` sekarang menyisipkan konten section yang relevan langsung (Step N + "Cross-Layer
+Contracts" buat data-layer/test-contract/ui-slice/connect; `design-system` + `component-spliting`
+utuh buat ui-slice; `component-spliting` utuh juga buat test-contract yang sebelumnya cuma
+menyebut nama skill itu tanpa isi; `slicing-review` utuh buat review) — bukan lagi menyebut nama
+skill dan berharap model "menemukan"-nya sendiri.
+
+**Bug turunan yang ketemu saat implementasi**: `skill-content.ts` awalnya menghitung
+`PACKAGE_ROOT` dua level ke atas dari lokasinya sendiri (`src/pipeline/`) — benar kalau dijalankan
+dari source (`bun src/cli.ts`), **salah** setelah di-build, karena `tsdown` membundel semua entry
+point jadi file flat di `dist/` (bukan mempertahankan struktur folder). Diperbaiki dengan
+mensentralkan resolusi `PACKAGE_ROOT` ke satu file baru (`src/package-root.ts`, sengaja diletakkan
+persis satu level di bawah root — sama di source maupun hasil build), dan `primary-rules.ts` +
+`session-options.ts` ikut direfactor supaya cuma ada satu sumber kebenaran, bukan tiga perhitungan
+independen yang gampang divergen. Dibuktikan benar dengan mensimulasikan resolusi path terhadap
+hasil `dist/` yang sebenarnya (bukan cuma dari source) — `bundler` bahkan men-dedupe jadi satu
+ekspresi `PACKAGE_ROOT` yang sama di seluruh chunk, mengonfirmasi tidak ada sisa perhitungan lain
+yang salah.
+
+Dipublish sebagai `wangs-agent@0.4.4` ke Verdaccio lokal.
+
+---
+
 ## Terbuka / belum ditindaklanjuti
 
 Hal-hal yang sudah diajukan tapi user belum memutuskan — jangan diasumsikan disetujui:
@@ -246,8 +336,6 @@ Hal-hal yang sudah diajukan tapi user belum memutuskan — jangan diasumsikan di
   belum ada konfirmasi final.
 - **`05-authentication.md`** (§12) — belum diputuskan apa strategi HTTP-only cookie ini memang
   standar Wangs Foundation atau spesifik tagsamurai. Butuh jawaban eksplisit sebelum dibundel.
-- **`06-navigation.md`** (§12) — kalau mau ada rule navigasi, harus ditulis ulang dari
-  `FeatureGraphBuilder.ts` yang asli, bukan disalin dari tagsamurai. Belum dikerjakan.
 - **§9 di atas** (`i18n-usage` naik jadi primary rule) — rekomendasi "jangan, tetap eksternal"
   sudah diberikan, belum ada konfirmasi final.
 
