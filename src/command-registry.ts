@@ -17,13 +17,12 @@ export interface CommandContext {
 
 export type CommandHandler = (ctx: CommandContext) => Promise<void>;
 
-// "/model" is deliberately NOT dispatched here — App.tsx intercepts it directly (before the line
-// ever reaches InputRouter) to open the interactive arrow-key model picker overlay, since that's a
-// UI-only interaction (no chat scrollback involvement) that needs to render inside the React tree
-// and capture Up/Down/Enter/Escape. It stays listed in HOST_COMMANDS below purely for "/"-mention
+// "/model" and "/usage" are deliberately NOT dispatched here — App.tsx intercepts both directly
+// (before the line ever reaches InputRouter) to open their own full-screen overlays, since that's
+// a UI-only interaction (no chat scrollback involvement) that needs to render inside the React
+// tree and capture Escape. Both stay listed in HOST_COMMANDS below purely for "/"-mention
 // autocomplete's benefit.
 const COMMANDS: Record<string, CommandHandler> = {
-  "/usage": handleUsage,
   "/resume": handleResume,
 };
 
@@ -56,36 +55,6 @@ export async function handleSlashCommand(line: string, ctx: CommandContext): Pro
   if (!handler) return false;
   await handler(ctx);
   return true;
-}
-
-async function handleUsage(ctx: CommandContext): Promise<void> {
-  const status = ctx.sessionStatus.store.get();
-  const lines: string[] = ["## Usage this session", ""];
-
-  const models = Object.entries(status.modelUsage);
-  if (models.length === 0) {
-    lines.push("(no usage recorded yet)");
-  }
-  for (const [model, usage] of models) {
-    lines.push(`**${model}**`);
-    lines.push(`- input: ${usage.inputTokens.toLocaleString()} · output: ${usage.outputTokens.toLocaleString()}`);
-    lines.push(`- cache read: ${usage.cacheReadInputTokens.toLocaleString()} · cache write: ${usage.cacheCreationInputTokens.toLocaleString()}`);
-    lines.push(`- cost: $${usage.costUSD.toFixed(6)}`);
-    lines.push("");
-  }
-
-  // Deliberately NOT calling usage_EXPERIMENTAL_MAY_CHANGE_DO_NOT_RELY_ON_THIS_API_YET() — the
-  // SDK's own naming is an explicit "don't build on this yet" signal.
-  try {
-    const context = await ctx.getSession().getContextUsage();
-    lines.push(
-      `Context window: ${context.totalTokens.toLocaleString()} / ${context.maxTokens.toLocaleString()} tokens (${context.percentage.toFixed(1)}%)`,
-    );
-  } catch (err) {
-    lines.push(`(could not read live context usage: ${err instanceof Error ? err.message : String(err)})`);
-  }
-
-  ctx.chatStore.pushHost(lines.join("\n"));
 }
 
 async function handleResume(ctx: CommandContext): Promise<void> {

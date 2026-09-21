@@ -39,7 +39,13 @@ export async function runRepl(params: ReplParams): Promise<void> {
   const sessionStatus = new SessionStatusStore();
   sessionStatus.seedKnownConfig({ cwd: params.cwd, model: DEFAULT_MODEL, permissionMode: DEFAULT_PERMISSION_MODE });
   const renderMessage = createMessageRenderer(chatStore, sessionStatus);
-  const inputQueue = new AsyncInputQueue();
+  // Not `const` — /resume recreates this (see requestResume below). Confirmed via a real SDK call
+  // that `session.interrupt()` alone does NOT end the query()'s generator (the same session keeps
+  // running, ready for the next pushed message) — so ending the current `for await` iteration for
+  // /resume's sake takes closing the input queue itself, and a closed AsyncInputQueue is
+  // permanently inert (`push()` silently no-ops once `closed`), so continuing to chat after a
+  // resume needs a fresh queue instance, not the same one reopened.
+  let inputQueue = new AsyncInputQueue();
   const sessionStoreHandle = await createOptionalSessionStore();
 
   chatStore.pushWelcome();
@@ -66,6 +72,11 @@ export async function runRepl(params: ReplParams): Promise<void> {
     sessionStore: sessionStoreHandle?.store,
     requestResume: (sessionId) => {
       pendingResumeId = sessionId;
+      // Closing the queue is what actually ends the current `for await` loop (see the `let
+      // inputQueue` comment above) — interrupt() alone would leave this iteration running
+      // indefinitely, waiting on a queue nothing will ever push to again. interrupt() is still
+      // called too, so an in-flight turn aborts immediately instead of finishing out first.
+      inputQueue.close();
       void currentSession?.interrupt().catch(() => undefined);
     },
   };
@@ -112,21 +123,28 @@ export async function runRepl(params: ReplParams): Promise<void> {
     process.exit(0);
   };
 
+  // Escape in the TUI — just stops the current turn, confirmed via the same real-SDK finding
+  // above: interrupt() alone doesn't end the session, so nothing else needs doing here. The
+  // for-await loop keeps running and picks the next pushed message up normally.
+  const onInterrupt = (): void => {
+    void currentSession?.interrupt().catch(() => undefined);
+  };
+
   root.render(
     <App
       chatStore={chatStore}
       sessionStatus={sessionStatus}
       inputRouter={inputRouter}
       onExit={() => void shutdown()}
+      onInterrupt={onInterrupt}
       cwd={params.cwd}
       getSession={() => currentSession}
     />,
   );
 
-  // The renderer/root/chatStore/inputRouter/inputQueue are created once above and live across
-  // restarts — only `query()`/`session` gets recreated on /resume, so the terminal doesn't flicker
-  // or reset; `AsyncInputQueue` has no notion of "belonging" to one session, it's just the
-  // AsyncIterable `prompt` reads from, so reusing it across `query()` calls is safe.
+  // The renderer/root/chatStore/inputRouter are created once above and live across restarts —
+  // only `query()`/`session` (and, on /resume, `inputQueue` — see its own comment above) get
+  // recreated, so the terminal doesn't flicker or reset.
   for (;;) {
     const resume = pendingResumeId;
     pendingResumeId = undefined;
@@ -144,7 +162,7 @@ export async function runRepl(params: ReplParams): Promise<void> {
         renderMessage(message);
       }
     } catch (err) {
-      // A resume-triggered interrupt() legitimately unwinds this loop — only a genuine error
+      // A resume-triggered queue close() legitimately unwinds this loop — only a genuine error
       // (no resume pending) is worth surfacing.
       if (pendingResumeId === undefined) {
         chatStore.pushFooter(`[wangs-agent] session error: ${err instanceof Error ? err.message : String(err)}`);
@@ -153,6 +171,7 @@ export async function runRepl(params: ReplParams): Promise<void> {
 
     if (closing) break;
     if (pendingResumeId === undefined) break;
+    inputQueue = new AsyncInputQueue(); // the old one is closed and permanently inert — see its own comment above
     chatStore.pushHost(`Resumed session ${pendingResumeId}.`);
   }
 }

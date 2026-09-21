@@ -44,31 +44,10 @@ describe("handleSlashCommand", () => {
     expect(handled).toBe(false);
   });
 
-  test("/usage renders accumulated per-model totals and live context usage", async () => {
-    const { ctx, chatStore } = makeContext({
-      getSession: () => ({
-        getContextUsage: async () => ({ totalTokens: 1234, maxTokens: 200_000, percentage: 0.617 }),
-      }),
-    });
-    ctx.sessionStatus.accumulateUsage({
-      "claude-sonnet-5": {
-        inputTokens: 100,
-        outputTokens: 50,
-        cacheReadInputTokens: 10,
-        cacheCreationInputTokens: 5,
-        webSearchRequests: 0,
-        costUSD: 0.0012,
-      },
-    });
-
+  test("/usage is not dispatched here — App.tsx intercepts it directly to open the full-screen usage overlay", async () => {
+    const { ctx } = makeContext();
     const handled = await handleSlashCommand("/usage", ctx);
-    expect(handled).toBe(true);
-
-    const text = lastHostText(chatStore);
-    expect(text).toContain("claude-sonnet-5");
-    expect(text).toContain("100");
-    expect(text).toContain("1,234");
-    expect(text).toContain("200,000");
+    expect(handled).toBe(false);
   });
 
   test("/model is not dispatched here — App.tsx intercepts it directly to open the interactive model picker overlay", async () => {
