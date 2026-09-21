@@ -1,28 +1,48 @@
 import { useSyncExternalStore } from "react";
 
 import type { SessionStatusStore } from "./session-status.ts";
-import { CARD_BORDER, GOLD, LOGO_PATH } from "./theme.ts";
+import { CARD_BG, CARD_BORDER, GOLD, LOGO_PATH, ROSE } from "./theme.ts";
 
-function CommandCard({ cmd, desc, onClick }: { cmd: string; desc: string; onClick: (cmd: string) => void }): React.ReactNode {
+function CommandCard({
+  cmd,
+  desc,
+  accent,
+  onClick,
+}: {
+  cmd: string;
+  desc: string;
+  accent?: string;
+  onClick: (cmd: string) => void;
+}): React.ReactNode {
   return (
     <box
-      style={{ border: true, borderStyle: "rounded", borderColor: CARD_BORDER, flexGrow: 1, flexDirection: "column", paddingX: 1 }}
+      style={{
+        border: true,
+        borderStyle: "rounded",
+        borderColor: CARD_BORDER,
+        backgroundColor: CARD_BG,
+        flexGrow: 1,
+        flexDirection: "column",
+        justifyContent: "space-between",
+        paddingX: 1,
+      }}
       onMouseDown={() => onClick(cmd)}
     >
-      <text content={cmd} style={{ fg: GOLD }} />
-      <text content={desc} style={{ fg: "#565f89" }} />
+      <text content={cmd} style={{ fg: accent ?? GOLD }} />
+      <text content={desc} style={{ fg: "#94a3b8" }} />
     </box>
   );
 }
 
-// Real commands only — the design reference this banner is adapted from also showed a "/diff"
-// card, which doesn't exist here; not included since there's nothing behind it to run.
-const BANNER_COMMANDS: { cmd: string; desc: string }[] = [
+// Real commands only — code.html's own command-card grid also shows a "/diff" card, which
+// doesn't exist here; not included since there's nothing behind it to run. `/exit` keeps
+// code.html's rose accent (its one card styled as a destructive action, not the gold the rest use).
+const BANNER_COMMANDS: { cmd: string; desc: string; accent?: string }[] = [
   { cmd: "/create-feature", desc: "Deterministic feature-build pipeline" },
   { cmd: "/usage", desc: "Token/cost totals and plan rate limits" },
   { cmd: "/model", desc: "Switch the active model" },
   { cmd: "/resume", desc: "Pick a previous session to resume" },
-  { cmd: "/exit", desc: "Quit Wangs Code" },
+  { cmd: "/exit", desc: "Quit Wangs Code", accent: ROSE },
 ];
 
 export function WelcomeBanner({
@@ -37,8 +57,6 @@ export function WelcomeBanner({
   onCommandClick: (cmd: string) => void;
 }): React.ReactNode {
   const { model } = useSyncExternalStore(sessionStatus.store.subscribe, sessionStatus.store.get);
-  const firstRow = BANNER_COMMANDS.slice(0, 3);
-  const secondRow = BANNER_COMMANDS.slice(3);
 
   return (
     <box style={{ flexDirection: "column", marginBottom: 1 }}>
@@ -60,7 +78,7 @@ export function WelcomeBanner({
                 because each "blocks" character cell stacks 2 vertical pixels (▀/▄) into 1 row but
                 only 1 pixel per column, so a terminal cell itself is roughly twice as tall as it is
                 wide; height:width 1:2 is what actually renders as a visual square, not 1:1. */}
-            <image source={LOGO_PATH} protocol="blocks" fit="fit" style={{ width: 16, height: 8 }} />
+            <image source={LOGO_PATH} protocol="blocks" fit="cover" style={{ width: 14, height: 6 }} />
           </box>
           <box style={{ flexDirection: "column", marginLeft: 2, flexGrow: 1 }}>
             <box style={{ flexDirection: "row", alignItems: "center" }}>
@@ -86,20 +104,24 @@ export function WelcomeBanner({
         </box>
       </box>
 
-      <box style={{ flexDirection: "row", marginBottom: 1 }}>
-        <text content="╭─ " style={{ fg: GOLD }} />
-        <text content="CORE DIRECTIVES & SLASH PIPELINES" style={{ fg: "#94a3b8" }} />
+      <box style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: 1 }}>
+        <box style={{ flexDirection: "row" }}>
+          <text content="╭─ " style={{ fg: GOLD }} />
+          <text content="CORE DIRECTIVES & SLASH PIPELINES" style={{ fg: "#94a3b8" }} />
+        </box>
+        {/* code.html's own hint reads "Press hotkey or click to stage prompt" — hotkey badges
+            aren't implemented yet, so this only names the part that's real: clicking a card. */}
+        <text content="Click a command to stage it" style={{ fg: "#64748b" }} />
       </box>
-      <box style={{ flexDirection: "row", marginBottom: 1 }}>
-        {firstRow.map((c) => (
-          <CommandCard key={c.cmd} cmd={c.cmd} desc={c.desc} onClick={onCommandClick} />
+      {/* A real wrapping grid (flexWrap, not two hand-sliced rows) — matches code.html's own
+          `grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3`: 3 per row, wrapping to however many
+          rows the command count needs, instead of a layout that only works for exactly 5 items. */}
+      <box style={{ flexDirection: "row", flexWrap: "wrap" }}>
+        {BANNER_COMMANDS.map((c) => (
+          <box key={c.cmd} style={{ width: "33%", paddingRight: 1, paddingBottom: 1 }}>
+            <CommandCard cmd={c.cmd} desc={c.desc} accent={c.accent} onClick={onCommandClick} />
+          </box>
         ))}
-      </box>
-      <box style={{ flexDirection: "row" }}>
-        {secondRow.map((c) => (
-          <CommandCard key={c.cmd} cmd={c.cmd} desc={c.desc} onClick={onCommandClick} />
-        ))}
-        <box style={{ flexGrow: 1 }} />
       </box>
     </box>
   );

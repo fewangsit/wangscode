@@ -9,6 +9,10 @@ export const LOGO_PATH = path.join(PACKAGE_ROOT, "assets", "wangs-logo.png");
 export const GOLD = "#e0af68";
 export const BG = "#1a1b26";
 export const CARD_BORDER = "#1f293d";
+// From code.html's tui.card / tui.rose — used by the welcome banner's command-card grid, which
+// is implemented to match that mockup exactly rather than loosely inspired by it.
+export const CARD_BG = "#121722";
+export const ROSE = "#fb7185";
 
 export const ROLE_COLOR: Record<string, string> = {
   user: GOLD,
