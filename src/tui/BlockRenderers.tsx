@@ -3,18 +3,32 @@ import { useEffect, useState } from "react";
 import type { SyntaxStyle } from "@opentui/core";
 
 import type { ChatBlock } from "./chat-store.ts";
+import { formatToolCall } from "./format.ts";
 import { ROLE_COLOR, TOOL_STATUS_COLOR, TOOL_STATUS_GLYPH } from "./theme.ts";
 
 function ToolCallRow({ block, syntaxStyle }: { block: Extract<ChatBlock, { kind: "tool" }>; syntaxStyle: SyntaxStyle }): React.ReactNode {
   const glyph = TOOL_STATUS_GLYPH[block.status];
   const color = TOOL_STATUS_COLOR[block.status];
-  const label = block.isSkill ? `Using skill: ${(block.input as { skill?: string })?.skill ?? block.name}` : block.name;
+  const formatted = formatToolCall(block.name, block.input, block.isSkill);
 
   return (
     <box style={{ flexDirection: "column", marginBottom: 1 }}>
-      <text content={`${glyph} ${label}`} style={{ fg: color }} />
-      {block.input !== null ? <code content={JSON.stringify(block.input, null, 2)} filetype="json" syntaxStyle={syntaxStyle} /> : null}
-      {block.resultText ? <text content={block.resultText} style={{ fg: "#565f89" }} /> : null}
+      <text content={`${glyph} ${formatted.headline}`} style={{ fg: color }} />
+      {formatted.detail ? (
+        <box style={{ paddingLeft: 2 }}>
+          <text content={formatted.detail} style={{ fg: "#94a3b8" }} wrapMode="none" truncate />
+        </box>
+      ) : null}
+      {formatted.rawJson ? (
+        <box style={{ paddingLeft: 2 }}>
+          <code content={formatted.rawJson} filetype="json" syntaxStyle={syntaxStyle} />
+        </box>
+      ) : null}
+      {block.resultText ? (
+        <box style={{ paddingLeft: 2 }}>
+          <text content={block.resultText} style={{ fg: "#565f89" }} />
+        </box>
+      ) : null}
     </box>
   );
 }

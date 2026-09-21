@@ -1,7 +1,7 @@
 import type { EffortLevel, ModelInfo } from "@anthropic-ai/claude-agent-sdk";
 
 import { capitalize } from "./format.ts";
-import { BG, GOLD } from "./theme.ts";
+import { BG, CARD_BORDER, GOLD } from "./theme.ts";
 
 /** Picks a sensible default effort level out of a model's supported set — "high" if it's offered
  *  (matches Claude Code's own default), otherwise whatever the model does support. */
@@ -17,37 +17,73 @@ export function clampEffort(effort: EffortLevel, levels: readonly EffortLevel[] 
   return levels.includes(effort) ? effort : defaultEffortFor(levels);
 }
 
-export function ModelPicker({
-  models,
-  selectedIndex,
-  loading,
-  currentModel,
-  effort,
-}: {
+export interface ModelPickerProps {
   models: ModelInfo[];
   selectedIndex: number;
   loading: boolean;
   currentModel: string | null;
   effort: EffortLevel;
-}): React.ReactNode {
+  onCancel?: () => void;
+  onSelect?: (index: number) => void;
+}
+
+export function ModelPicker({ models, selectedIndex, loading, currentModel, effort, onCancel, onSelect }: ModelPickerProps): React.ReactNode {
   const highlighted = models[selectedIndex];
   return (
-    <box style={{ border: ["top"], flexGrow: 1, flexDirection: "column", paddingX: 2, paddingY: 1 }} title="Select model">
+    <box
+      style={{
+        border: true,
+        borderStyle: "rounded",
+        borderColor: CARD_BORDER,
+        flexDirection: "column",
+        paddingX: 0,
+        paddingY: 0,
+      }}
+    >
+      <box style={{ flexDirection: "row", justifyContent: "space-between", paddingX: 1, marginBottom: 1 }}>
+        <text content="Select model" style={{ fg: GOLD }} />
+        <text content="Esc to cancel" style={{ fg: "#565f89" }} onMouseDown={onCancel} />
+      </box>
       {loading ? (
-        <text content="Loading models..." style={{ fg: "#565f89" }} />
+        <box style={{ paddingX: 1 }}>
+          <text content="Loading models..." style={{ fg: "#565f89" }} />
+        </box>
       ) : models.length === 0 ? (
-        <text content="No models reported by this session." style={{ fg: "#565f89" }} />
+        <box style={{ paddingX: 1 }}>
+          <text content="No models reported by this session." style={{ fg: "#565f89" }} />
+        </box>
       ) : (
         models.map((m, i) => {
+          const isSelected = i === selectedIndex;
           const isCurrent = m.value === currentModel || m.resolvedModel === currentModel;
-          const label = `${isCurrent ? "✔" : " "} ${m.displayName} — ${m.description}`;
-          return <text key={m.value} content={label} style={i === selectedIndex ? { fg: BG, bg: GOLD } : { fg: "#c0caf5" }} />;
+          const prefix = isCurrent ? "✔ " : "  ";
+          return (
+            <box
+              key={m.value}
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                paddingX: 1,
+                backgroundColor: isSelected ? GOLD : undefined,
+              }}
+              onMouseDown={() => onSelect?.(i)}
+            >
+              <box style={{ minWidth: 22, marginRight: 2, flexShrink: 0 }}>
+                <text content={`${prefix}${m.displayName}`} wrapMode="none" truncate style={{ fg: isSelected ? BG : GOLD }} />
+              </box>
+              <text content={m.description} wrapMode="none" truncate flexShrink={1} style={{ fg: isSelected ? "#343b58" : "#94a3b8" }} />
+            </box>
+          );
         })
       )}
       {highlighted?.supportsEffort ? (
-        <text content={`● ${capitalize(effort)} effort   ←/→ to adjust`} style={{ fg: "#e0af68", marginTop: 1 }} />
+        <box style={{ paddingX: 1, marginTop: 1 }}>
+          <text content={`● ${capitalize(effort)} effort   ←/→ to adjust`} style={{ fg: "#e0af68" }} />
+        </box>
       ) : null}
-      <text content="This session only — Enter to select · Esc to cancel" style={{ fg: "#565f89", marginTop: 1 }} />
+      <box style={{ paddingX: 1, marginTop: 1 }}>
+        <text content="This session only — Enter to select · Esc to cancel" style={{ fg: "#565f89" }} />
+      </box>
     </box>
   );
 }

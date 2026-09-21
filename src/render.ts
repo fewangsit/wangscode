@@ -1,6 +1,6 @@
-import type { SDKMessage } from "@anthropic-ai/claude-agent-sdk";
+import type { SDKMessage, SessionMessage } from "@anthropic-ai/claude-agent-sdk";
 
-import type { ChatStore } from "./tui/chat-store.ts";
+import type { ChatBlock, ChatStore, ToolCallBlock } from "./tui/chat-store.ts";
 import type { SessionStatusStore } from "./tui/session-status.ts";
 
 type TrackedBlock = { kind: "thinking" } | { kind: "tool_use"; toolUseId: string };
@@ -115,13 +115,118 @@ export function createMessageRenderer(chatStore: ChatStore, sessionStatus: Sessi
   };
 }
 
-function summarizeToolResultContent(content: string | Array<{ type: string; text?: string }> | undefined): string {
-  if (content === undefined) return "";
+export function summarizeToolResultContent(content: unknown): string {
+  if (content === undefined || content === null) return "";
   if (typeof content === "string") return truncate(content);
-  const text = content.map((block) => (block.type === "text" ? (block.text ?? "") : `[${block.type}]`)).join("\n");
-  return truncate(text);
+  if (Array.isArray(content)) {
+    const text = content
+      .map((block) => {
+        if (typeof block === "string") return block;
+        if (block && typeof block === "object" && "type" in block) {
+          const b = block as { type: string; text?: string };
+          return b.type === "text" ? (b.text ?? "") : `[${b.type}]`;
+        }
+        return String(block);
+      })
+      .join("\n");
+    return truncate(text);
+  }
+  return truncate(JSON.stringify(content));
 }
 
-function truncate(text: string, max = 500): string {
+export function truncate(text: string, max = 500): string {
   return text.length > max ? `${text.slice(0, max)}…` : text;
+}
+
+/**
+ * Converts historical session messages (from getSessionMessages) into renderable ChatBlocks.
+ * Links tool_use blocks to subsequent tool_result blocks, and preserves user/assistant dialogue.
+ */
+export function convertSessionMessagesToBlocks(messages: SessionMessage[]): ChatBlock[] {
+  const blocks: ChatBlock[] = [];
+  let nextId = 0;
+  const toolBlocksByUseId = new Map<string, ToolCallBlock>();
+
+  for (const m of messages) {
+    if (m.type === "user") {
+      const msg = m.message as { role?: string; content?: unknown } | undefined;
+      const content = msg?.content;
+
+      if (typeof content === "string") {
+        blocks.push({ id: nextId++, kind: "user", text: content });
+      } else if (Array.isArray(content)) {
+        for (const item of content) {
+          if (!item || typeof item !== "object" || !("type" in item)) continue;
+          const block = item as {
+            type: string;
+            tool_use_id?: string;
+            content?: unknown;
+            is_error?: boolean;
+            text?: string;
+          };
+
+          if (block.type === "tool_result" && block.tool_use_id) {
+            const toolBlock = toolBlocksByUseId.get(block.tool_use_id);
+            if (toolBlock) {
+              toolBlock.status = block.is_error ? "error" : "done";
+              toolBlock.resultText = summarizeToolResultContent(block.content);
+            }
+          } else if (block.type === "text" && block.text && !block.text.startsWith("[")) {
+            blocks.push({ id: nextId++, kind: "user", text: block.text });
+          }
+        }
+      }
+    } else if (m.type === "assistant") {
+      const msg = m.message as { role?: string; content?: unknown } | undefined;
+      const content = msg?.content;
+
+      if (Array.isArray(content)) {
+        for (const item of content) {
+          if (!item || typeof item !== "object" || !("type" in item)) continue;
+          const block = item as {
+            type: string;
+            text?: string;
+            thinking?: string;
+            id?: string;
+            name?: string;
+            input?: unknown;
+          };
+
+          if (block.type === "text") {
+            if (block.text && block.text !== "No response requested.") {
+              blocks.push({
+                id: nextId++,
+                kind: "assistant",
+                text: block.text,
+                streaming: false,
+              });
+            }
+          } else if (block.type === "thinking") {
+            if (block.thinking && block.thinking.trim().length > 0) {
+              blocks.push({
+                id: nextId++,
+                kind: "thinking",
+                text: block.thinking,
+                streaming: false,
+              });
+            }
+          } else if (block.type === "tool_use" && block.id && block.name) {
+            const toolBlock: ToolCallBlock = {
+              id: nextId++,
+              kind: "tool",
+              toolUseId: block.id,
+              name: block.name,
+              input: block.input ?? null,
+              status: "done",
+              isSkill: block.name === "Skill",
+            };
+            toolBlocksByUseId.set(block.id, toolBlock);
+            blocks.push(toolBlock);
+          }
+        }
+      }
+    }
+  }
+
+  return blocks;
 }

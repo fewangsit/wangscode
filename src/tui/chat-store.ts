@@ -126,6 +126,25 @@ export class ChatStore {
     }
   }
 
+  /** Replaces all chat blocks with a restored history set — used on /resume. */
+  replaceBlocks(blocks: ChatBlock[]): void {
+    this.flushAll();
+    this.toolIndex.clear();
+    this.toolInputBuffers.clear();
+    this.typewriters.clear();
+    this.sdkDone.clear();
+
+    let maxId = 0;
+    for (const b of blocks) {
+      if (b.id >= maxId) maxId = b.id + 1;
+      if (b.kind === "tool") {
+        this.toolIndex.set(b.toolUseId, b.id);
+      }
+    }
+    this.nextId = maxId;
+    this.store.set(blocks);
+  }
+
   private push(block: ChatBlock): void {
     this.store.update((blocks) => [...blocks, block]);
   }

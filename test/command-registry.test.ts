@@ -82,4 +82,18 @@ describe("handleSlashCommand", () => {
     await handleSlashCommand("/resume", ctx);
     expect(lastHostText(chatStore)).toContain("No previous sessions");
   });
+
+  test("/resume <sessionId> directly requests resume without prompt", async () => {
+    const resumeCalls: string[] = [];
+    const { ctx, chatStore } = makeContext({
+      requestResume: (sessionId: string) => {
+        resumeCalls.push(sessionId);
+      },
+    });
+
+    const handled = await handleSlashCommand("/resume session-direct", ctx);
+    expect(handled).toBe(true);
+    expect(resumeCalls).toEqual(["session-direct"]);
+    expect(lastHostText(chatStore)).toContain("session-direct");
+  });
 });

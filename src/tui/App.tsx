@@ -1,11 +1,13 @@
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { useKeyboard, useRenderer, useSelectionHandler } from "@opentui/react";
 import { defaultTextareaKeyBindings, MacOSScrollAccel, type KeyBinding, type Renderable, type TextareaRenderable } from "@opentui/core";
-import type { EffortLevel, ModelInfo, Query, SDKControlGetUsageResponse } from "@anthropic-ai/claude-agent-sdk";
+import type { EffortLevel, ModelInfo, Query, SDKControlGetUsageResponse, SessionStore } from "@anthropic-ai/claude-agent-sdk";
+import { listSessions } from "@anthropic-ai/claude-agent-sdk";
 
 import type { ChatStore } from "./chat-store.ts";
 import type { InputRouter } from "./input-router.ts";
 import type { SessionStatusStore } from "./session-status.ts";
+import type { PermissionRequestStore } from "../permission-prompt.ts";
 import { detectActiveFragment } from "./autocomplete.ts";
 import { listFileMentions } from "./file-mentions.ts";
 import { listAvailableCommands, type CommandDescriptor } from "../command-registry.ts";
@@ -17,6 +19,8 @@ import { SuggestionBox, type Suggestion } from "./SuggestionBox.tsx";
 import { clampEffort, ModelPicker } from "./ModelPicker.tsx";
 import { UsagePanel } from "./UsagePanel.tsx";
 import { StatusBar } from "./StatusBar.tsx";
+import { permissionOptionsFor, PermissionPrompt } from "./PermissionPrompt.tsx";
+import { SessionPicker, type SessionInfo } from "./SessionPicker.tsx";
 
 // Plain Enter submits (like the old single-line <input>), Option/Alt+Enter inserts a newline
 // instead — the opposite of Textarea's own default table (return=newline, meta+return=submit),
@@ -42,6 +46,10 @@ export interface AppProps {
   sessionStoreActive: boolean;
   /** Read fresh on every autocomplete fetch — the underlying session changes across a /resume restart (see repl.tsx). May be undefined for the brief window before the first session is up. */
   getSession: () => Query | undefined;
+  /** canUseTool requests land here instead of a plain-text askLine() prompt — see permission-prompt.ts. */
+  permissionRequestStore: PermissionRequestStore;
+  requestResume?: (sessionId: string) => void;
+  sessionStore?: SessionStore;
 }
 
 export function App({
@@ -54,9 +62,13 @@ export function App({
   version,
   sessionStoreActive,
   getSession,
+  permissionRequestStore,
+  requestResume,
+  sessionStore,
 }: AppProps): React.ReactNode {
   const blocks = useSyncExternalStore(chatStore.store.subscribe, chatStore.store.get);
   const activePrompt = useSyncExternalStore(inputRouter.promptStore.subscribe, inputRouter.promptStore.get);
+  const permissionRequest = useSyncExternalStore(permissionRequestStore.store.subscribe, permissionRequestStore.store.get);
   const inputRef = useRef<TextareaRenderable>(null);
   const syntaxStyle = useMemo(() => createAppSyntaxStyle(), []);
   // The default scroll behavior has no acceleration curve at all — every wheel tick moves the
@@ -129,11 +141,29 @@ export function App({
   const [modelPickerLoading, setModelPickerLoading] = useState(false);
   const [modelPickerEffort, setModelPickerEffort] = useState<EffortLevel>("high");
 
-  // The /usage full-screen overlay — same "handled entirely in App.tsx" reasoning as /model above.
+  // The /usage docked overlay — same "handled entirely in App.tsx" reasoning as /model above.
   const [usagePanelOpen, setUsagePanelOpen] = useState(false);
   const [usageData, setUsageData] = useState<SDKControlGetUsageResponse | null>(null);
   const [usageLoading, setUsageLoading] = useState(false);
   const [usageError, setUsageError] = useState<string | null>(null);
+
+  // The interactive /resume session picker overlay — same pattern as /model and /usage.
+  const [sessionPickerOpen, setSessionPickerOpen] = useState(false);
+  const [sessionPickerSessions, setSessionPickerSessions] = useState<SessionInfo[]>([]);
+  const [sessionPickerIndex, setSessionPickerIndex] = useState(0);
+  const [sessionPickerLoading, setSessionPickerLoading] = useState(false);
+
+  // The canUseTool permission overlay — reset to the first option each time a *different* request
+  // comes in (identity check via toolName+label, since `permissionRequest` is a fresh object per
+  // call) so a previous answer's selection doesn't carry over to the next, unrelated prompt.
+  const [permissionSelectedIndex, setPermissionSelectedIndex] = useState(0);
+  const lastPermissionKeyRef = useRef<string | null>(null);
+  const permissionKey = permissionRequest ? `${permissionRequest.toolName}:${permissionRequest.label}` : null;
+  if (permissionKey !== lastPermissionKeyRef.current) {
+    lastPermissionKeyRef.current = permissionKey;
+    if (permissionKey !== null && permissionSelectedIndex !== 0) setPermissionSelectedIndex(0);
+  }
+  const permissionOptions = permissionOptionsFor(permissionRequest?.suggestions !== undefined);
 
   // Pure derivation from `inputText` — computed during render, not stored as its own state (an
   // earlier version set this from inside the effect below via `setState`, which oxlint correctly
@@ -171,7 +201,7 @@ export function App({
       void commandsPromise.then((commands) => {
         const needle = activeFragment.fragment.toLowerCase();
         const matches = commands.filter((c) => c.name.slice(1).toLowerCase().startsWith(needle)).slice(0, 10);
-        apply(matches.map((c) => ({ insertText: c.name.slice(1), label: `${c.name} — ${c.description}` })));
+        apply(matches.map((c) => ({ insertText: c.name.slice(1), label: c.name, description: c.description })));
       });
     }
   }, [activeFragment, cwd, getSession, sessionStatus]);
@@ -189,8 +219,11 @@ export function App({
     const current = inputRef.current.plainText;
     const before = current.slice(0, activeFragment.start);
     const after = current.slice(activeFragment.start + 1 + activeFragment.fragment.length);
-    const next = `${before}${activeFragment.trigger}${suggestion.insertText} ${after}`;
+    const inserted = `${activeFragment.trigger}${suggestion.insertText} `;
+    const next = `${before}${inserted}${after}`;
     inputRef.current.setText(next);
+    inputRef.current.cursorOffset = before.length + inserted.length;
+    inputRef.current.focus();
     setInputText(next); // ends with a trailing space, so the next fragment detection naturally comes back null
   };
 
@@ -199,6 +232,9 @@ export function App({
   const insertCommand = (cmd: string): void => {
     const next = `${cmd} `;
     inputRef.current?.setText(next);
+    if (inputRef.current) {
+      inputRef.current.cursorOffset = next.length;
+    }
     setInputText(next);
     inputRef.current?.focus();
   };
@@ -290,9 +326,64 @@ export function App({
       });
   };
 
+  const closeSessionPicker = (): void => {
+    setSessionPickerOpen(false);
+    inputRef.current?.setText("");
+    setInputText("");
+  };
+
+  const openSessionPicker = (): void => {
+    setSessionPickerOpen(true);
+    setSessionPickerLoading(true);
+    setSessionPickerSessions([]);
+    setSessionPickerIndex(0);
+
+    void listSessions({
+      dir: cwd,
+      ...(sessionStore ? { sessionStore } : {}),
+    })
+      .then((sessions) => {
+        setSessionPickerSessions(sessions);
+        setSessionPickerLoading(false);
+      })
+      .catch((err: unknown) => {
+        chatStore.pushHost(`Could not list sessions: ${err instanceof Error ? err.message : String(err)}`);
+        setSessionPickerLoading(false);
+      });
+  };
+
+  const confirmSessionPick = (): void => {
+    const picked = sessionPickerSessions[sessionPickerIndex];
+    closeSessionPicker();
+    if (!picked) return;
+    const title = picked.summary || picked.firstPrompt || picked.sessionId;
+    chatStore.pushHost(`Resuming session **${title}**...`);
+    requestResume?.(picked.sessionId);
+  };
+
   useKeyboard((key) => {
     if (key.ctrl && key.name === "c") {
       onExit();
+      return;
+    }
+
+    if (permissionRequest) {
+      if (key.name === "up") {
+        setPermissionSelectedIndex((i) => (i - 1 + permissionOptions.length) % permissionOptions.length);
+      } else if (key.name === "down") {
+        setPermissionSelectedIndex((i) => (i + 1) % permissionOptions.length);
+      } else if (key.name === "escape") {
+        permissionRequest.resolve({ behavior: "deny", message: "User declined this tool call." });
+      } else if (key.name === "return") {
+        const picked = permissionOptions[permissionSelectedIndex];
+        if (picked?.choice === "deny") {
+          permissionRequest.resolve({ behavior: "deny", message: "User declined this tool call." });
+        } else if (picked?.choice === "always-allow") {
+          permissionRequest.resolve({ behavior: "allow", updatedInput: permissionRequest.input, updatedPermissions: permissionRequest.suggestions });
+        } else {
+          permissionRequest.resolve({ behavior: "allow", updatedInput: permissionRequest.input });
+        }
+      }
       return;
     }
 
@@ -328,6 +419,19 @@ export function App({
       return;
     }
 
+    if (sessionPickerOpen) {
+      if (sessionPickerSessions.length > 0 && key.name === "up") {
+        setSessionPickerIndex((i) => (i - 1 + sessionPickerSessions.length) % sessionPickerSessions.length);
+      } else if (sessionPickerSessions.length > 0 && key.name === "down") {
+        setSessionPickerIndex((i) => (i + 1) % sessionPickerSessions.length);
+      } else if (key.name === "escape") {
+        closeSessionPicker();
+      } else if (key.name === "return") {
+        confirmSessionPick();
+      }
+      return;
+    }
+
     if (usagePanelOpen) {
       if (key.name === "escape") closeUsagePanel();
       return;
@@ -338,6 +442,15 @@ export function App({
         setSelectedIndex((i) => (i - 1 + visibleSuggestions.length) % visibleSuggestions.length);
       } else if (key.name === "down") {
         setSelectedIndex((i) => (i + 1) % visibleSuggestions.length);
+      } else if (key.name === "tab") {
+        key.preventDefault?.();
+        key.stopPropagation?.();
+        if (key.shift) {
+          setSelectedIndex((i) => (i - 1 + visibleSuggestions.length) % visibleSuggestions.length);
+        } else {
+          const picked = visibleSuggestions[selectedIndex];
+          if (picked) acceptSuggestion(picked);
+        }
       } else if (key.name === "escape") {
         setDismissed(true);
       }
@@ -365,7 +478,7 @@ export function App({
     // alongside useKeyboard's "return" handler for confirmModelPick()/closeUsagePanel(), the same
     // double-firing hazard the suggestion box's comment above describes for the same underlying
     // reason (both subscribe to the same keypress). The overlay owns Enter entirely while it's open.
-    if (modelPickerOpen || usagePanelOpen) return;
+    if (sessionPickerOpen || modelPickerOpen || usagePanelOpen) return;
     if (visibleSuggestions.length > 0) {
       acceptSuggestion(visibleSuggestions[selectedIndex]!);
       return;
@@ -383,6 +496,17 @@ export function App({
       openUsagePanel();
       return;
     }
+    if (!activePrompt && (text === "/resume" || text.startsWith("/resume "))) {
+      const arg = text.slice("/resume".length).trim();
+      setInputText("");
+      if (arg.length > 0) {
+        chatStore.pushHost(`Resuming session ${arg}...`);
+        requestResume?.(arg);
+        return;
+      }
+      openSessionPicker();
+      return;
+    }
     inputRouter.submit(text);
   };
 
@@ -394,76 +518,100 @@ export function App({
         ) : null}
         {blocks.filter((b) => b.kind !== "welcome").map((block) => renderBlock(block, syntaxStyle))}
       </scrollbox>
-      <SuggestionBox suggestions={visibleSuggestions} selectedIndex={selectedIndex} />
-      {/* Matches code.html's #cli-form: rounded border, near-black bg, gold border (its
-          focus-within state — this is effectively always true, since useEffect above steals
-          focus back to this input the moment anything else would take it). */}
-      <box
-        style={{
-          border: true,
-          borderStyle: "rounded",
-          borderColor: GOLD,
-          height: 3,
-          flexShrink: 0,
-          flexDirection: "row",
-          alignItems: "center",
-          paddingX: 1,
-        }}
-        title={activePrompt ?? undefined}
-      >
-        {activePrompt ? null : (
-          <box style={{ flexDirection: "row" }}>
-            <text content="wangs-code " style={{ fg: GOLD }} />
-            <text content="❯ " style={{ fg: "#38bdf8" }} />
-          </box>
-        )}
-        <textarea
-          ref={inputRef}
-          placeholder={activePrompt ?? ""}
-          keyBindings={CHAT_INPUT_KEY_BINDINGS}
-          onContentChange={handleInputChange}
-          onSubmit={handleSubmit}
-          style={{ flexGrow: 1 }}
-          focused
-        />
-      </box>
-      <StatusBar sessionStatus={sessionStatus} />
-      {modelPickerOpen || usagePanelOpen ? (
-        // Absolutely positioned on top of the whole column, at a higher zIndex — this covers the
-        // chat visually (matching Claude Code's own /model and /usage taking over the screen)
-        // WITHOUT ever unmounting the scrollbox above: chat history was always safe either way
-        // (chatStore's data lives outside React, independent of what's currently mounted), but this
-        // also keeps the scrollbox's own component instance alive, so there's no remount/flicker
-        // when the overlay closes.
-        // A border alone doesn't occlude what's behind it — confirmed via a real headless render
-        // where the welcome banner's text visibly bled through, interleaved character-by-character
-        // with the picker's own rows. `backgroundColor` is what actually makes this an opaque
-        // layer instead of a transparent one that merely draws borders on top of the same cells.
-        <box
-          style={{
-            position: "absolute",
-            top: 0,
-            left: 0,
-            width: "100%",
-            height: "100%",
-            zIndex: 10,
-            flexDirection: "column",
-            backgroundColor: BG,
-          }}
-        >
-          {modelPickerOpen ? (
-            <ModelPicker
-              models={modelPickerModels}
-              selectedIndex={modelPickerIndex}
-              loading={modelPickerLoading}
-              currentModel={sessionStatus.store.get().model}
-              effort={modelPickerEffort}
-            />
-          ) : (
-            <UsagePanel loading={usageLoading} error={usageError} data={usageData} />
-          )}
+
+      {permissionRequest ? (
+        <box style={{ flexShrink: 0 }}>
+          <PermissionPrompt
+            label={permissionRequest.label}
+            mcpServerName={permissionRequest.mcpServerName}
+            options={permissionOptions}
+            selectedIndex={permissionSelectedIndex}
+            onDeny={() => permissionRequest.resolve({ behavior: "deny", message: "User declined this tool call." })}
+            onSelect={(idx) => {
+              const picked = permissionOptions[idx];
+              if (picked?.choice === "deny") {
+                permissionRequest.resolve({ behavior: "deny", message: "User declined this tool call." });
+              } else if (picked?.choice === "always-allow") {
+                permissionRequest.resolve({
+                  behavior: "allow",
+                  updatedInput: permissionRequest.input,
+                  updatedPermissions: permissionRequest.suggestions,
+                });
+              } else {
+                permissionRequest.resolve({ behavior: "allow", updatedInput: permissionRequest.input });
+              }
+            }}
+          />
         </box>
-      ) : null}
+      ) : usagePanelOpen ? (
+        <box style={{ flexShrink: 0 }}>
+          <UsagePanel loading={usageLoading} error={usageError} data={usageData} onBack={closeUsagePanel} />
+        </box>
+      ) : modelPickerOpen ? (
+        <box style={{ flexShrink: 0 }}>
+          <ModelPicker
+            models={modelPickerModels}
+            selectedIndex={modelPickerIndex}
+            loading={modelPickerLoading}
+            currentModel={sessionStatus.store.get().model}
+            effort={modelPickerEffort}
+            onCancel={closeModelPicker}
+            onSelect={(idx) => {
+              setModelPickerIndex(idx);
+              confirmModelPick();
+            }}
+          />
+        </box>
+      ) : sessionPickerOpen ? (
+        <box style={{ flexShrink: 0 }}>
+          <SessionPicker
+            sessions={sessionPickerSessions}
+            selectedIndex={sessionPickerIndex}
+            loading={sessionPickerLoading}
+            onCancel={closeSessionPicker}
+            onSelect={(idx) => {
+              setSessionPickerIndex(idx);
+              confirmSessionPick();
+            }}
+          />
+        </box>
+      ) : (
+        <>
+          <SuggestionBox suggestions={visibleSuggestions} selectedIndex={selectedIndex} onSelect={acceptSuggestion} />
+          {/* Matches code.html's #cli-form: rounded border, near-black bg, gold border (its
+              focus-within state — this is effectively always true, since useEffect above steals
+              focus back to this input the moment anything else would take it). */}
+          <box
+            style={{
+              border: true,
+              borderStyle: "rounded",
+              borderColor: GOLD,
+              height: 3,
+              flexShrink: 0,
+              flexDirection: "row",
+              alignItems: "center",
+              paddingX: 1,
+            }}
+            title={activePrompt ?? undefined}
+          >
+            {activePrompt ? null : (
+              <box style={{ flexDirection: "row" }}>
+                <text content="❯ " style={{ fg: "#38bdf8" }} />
+              </box>
+            )}
+            <textarea
+              ref={inputRef}
+              placeholder={activePrompt ?? ""}
+              keyBindings={CHAT_INPUT_KEY_BINDINGS}
+              onContentChange={handleInputChange}
+              onSubmit={handleSubmit}
+              style={{ flexGrow: 1 }}
+              focused
+            />
+          </box>
+        </>
+      )}
+      <StatusBar sessionStatus={sessionStatus} />
       {copiedVisible ? (
         <box style={{ position: "absolute", top: 0, right: 0, zIndex: 20 }}>
           <text content=" Copied " style={{ fg: BG, bg: GOLD }} />

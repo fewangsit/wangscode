@@ -19,6 +19,7 @@ Requires Bun (https://bun.sh) — the terminal UI's native binding only runs und
 
 Usage:
   wangs-code [--project=<path>]
+  wangs-code --resume <session-id>
   wangs-code --update | -u
   wangs-code --version | -v
   wangs-code --help | -h
@@ -34,6 +35,17 @@ packages/features/*, two layers only.`;
 function parseProjectFlag(argv: string[]): string | undefined {
   const hit = argv.find((a) => a.startsWith("--project="));
   return hit ? hit.slice("--project=".length) : undefined;
+}
+
+// Two forms accepted (`--resume <id>` and `--resume=<id>`) — the exit banner (see
+// exit-banner.tsx) prints the space-separated form since that's what most people type by hand,
+// but `=` is accepted too for consistency with --project=.
+function parseResumeFlag(argv: string[]): string | undefined {
+  const eqForm = argv.find((a) => a.startsWith("--resume="));
+  if (eqForm) return eqForm.slice("--resume=".length);
+
+  const idx = argv.indexOf("--resume");
+  return idx >= 0 ? argv[idx + 1] : undefined;
 }
 
 // Reads from PACKAGE_ROOT at runtime rather than a static `import ... from "../package.json"` —
@@ -99,8 +111,9 @@ async function main(): Promise<void> {
 
   const projectFlag = parseProjectFlag(argv);
   const cwd = projectFlag ? path.resolve(projectFlag) : process.cwd();
+  const resumeSessionId = parseResumeFlag(argv);
 
-  await runRepl({ cwd });
+  await runRepl({ cwd, resumeSessionId });
 }
 
 try {

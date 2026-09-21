@@ -141,7 +141,7 @@ export function WelcomeBanner({
           rows the command count needs, instead of a layout that only works for exactly 5 items. */}
       <box style={{ flexDirection: "row", flexWrap: "wrap" }}>
         {BANNER_COMMANDS.map((c) => (
-          <box key={c.cmd} style={{ width: "33%", paddingRight: 1, paddingBottom: 1 }}>
+          <box key={c.cmd} style={{ width: "33%", paddingRight: 1 }}>
             <CommandCard cmd={c.cmd} desc={c.desc} accent={c.accent} onClick={onCommandClick} />
           </box>
         ))}

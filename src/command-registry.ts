@@ -15,13 +15,11 @@ export interface CommandContext {
   requestResume: (sessionId: string) => void;
 }
 
-export type CommandHandler = (ctx: CommandContext) => Promise<void>;
+export type CommandHandler = (ctx: CommandContext, arg?: string) => Promise<void>;
 
-// "/model" and "/usage" are deliberately NOT dispatched here — App.tsx intercepts both directly
-// (before the line ever reaches InputRouter) to open their own full-screen overlays, since that's
-// a UI-only interaction (no chat scrollback involvement) that needs to render inside the React
-// tree and capture Escape. Both stay listed in HOST_COMMANDS below purely for "/"-mention
-// autocomplete's benefit.
+// "/model", "/usage", and interactive "/resume" are intercepted directly in App.tsx
+// (before the line ever reaches InputRouter) to open their interactive overlays.
+// They stay listed in HOST_COMMANDS below for "/"-mention autocomplete's benefit.
 const COMMANDS: Record<string, CommandHandler> = {
   "/resume": handleResume,
 };
@@ -43,21 +41,37 @@ export const HOST_COMMANDS: CommandDescriptor[] = [
 /** Merges HOST_COMMANDS with `session.supportedCommands()` (skill/plugin commands included) for autocomplete display — a name already in HOST_COMMANDS wins dispatch, so it's not duplicated here even if the SDK also reports one under the same name. */
 export async function listAvailableCommands(session: Query | undefined): Promise<CommandDescriptor[]> {
   if (!session) return HOST_COMMANDS;
-  const sdkCommands = await session.supportedCommands().catch(() => []);
-  const hostNames = new Set(HOST_COMMANDS.map((c) => c.name));
-  const extra = sdkCommands.filter((c) => !hostNames.has(`/${c.name}`)).map((c) => ({ name: `/${c.name}`, description: c.description }));
-  return [...HOST_COMMANDS, ...extra];
+  try {
+    const supported = await session.supportedCommands();
+    const existing = new Set(HOST_COMMANDS.map((c) => c.name));
+    const pluginCommands: CommandDescriptor[] = supported
+      .map((c) => ({ name: c.name.startsWith("/") ? c.name : `/${c.name}`, description: c.description }))
+      .filter((c) => !existing.has(c.name));
+    return [...HOST_COMMANDS, ...pluginCommands];
+  } catch {
+    return HOST_COMMANDS;
+  }
 }
 
 /** Host-defined slash commands beyond /create-feature (see slash-commands.ts) and /exit,/quit (see repl.tsx). Returns true if `line` matched and was handled. */
 export async function handleSlashCommand(line: string, ctx: CommandContext): Promise<boolean> {
-  const handler = COMMANDS[line.trim()];
+  const trimmed = line.trim();
+  const [cmd, ...rest] = trimmed.split(/\s+/);
+  if (!cmd) return false;
+  const handler = COMMANDS[cmd];
   if (!handler) return false;
-  await handler(ctx);
+  await handler(ctx, rest.join(" "));
   return true;
 }
 
-async function handleResume(ctx: CommandContext): Promise<void> {
+export async function handleResume(ctx: CommandContext, arg?: string): Promise<void> {
+  if (arg && arg.trim().length > 0) {
+    const target = arg.trim();
+    ctx.chatStore.pushHost(`Resuming session ${target}...`);
+    ctx.requestResume(target);
+    return;
+  }
+
   const sessions = await listSessions({
     dir: ctx.cwd,
     ...(ctx.sessionStore ? { sessionStore: ctx.sessionStore } : {}),

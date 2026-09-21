@@ -4,7 +4,7 @@ import path from "node:path";
 import { Pool } from "pg";
 import { createCliRenderer } from "@opentui/core";
 import { createRoot } from "@opentui/react";
-import { query } from "@anthropic-ai/claude-agent-sdk";
+import { getSessionInfo, getSessionMessages, query } from "@anthropic-ai/claude-agent-sdk";
 import type { Query } from "@anthropic-ai/claude-agent-sdk";
 
 import { App } from "./tui/App.tsx";
@@ -12,8 +12,9 @@ import { ChatStore } from "./tui/chat-store.ts";
 import { InputRouter } from "./tui/input-router.ts";
 import { SessionStatusStore } from "./tui/session-status.ts";
 import { AsyncInputQueue } from "./input-queue.ts";
-import { makeCanUseTool } from "./permission-prompt.ts";
-import { createMessageRenderer } from "./render.ts";
+import { makeCanUseTool, PermissionRequestStore } from "./permission-prompt.ts";
+import { printExitBanner } from "./ExitBanner.tsx";
+import { convertSessionMessagesToBlocks, createMessageRenderer } from "./render.ts";
 import { buildSessionOptions, DEFAULT_MODEL, DEFAULT_PERMISSION_MODE } from "./session-options.ts";
 import { FeatureBuildController } from "./slash-commands.ts";
 import { PostgresSessionStore } from "./postgres-session-store.ts";
@@ -23,16 +24,20 @@ import { PACKAGE_ROOT } from "./package-root.ts";
 
 export interface ReplParams {
   cwd: string;
+  /** From cli.ts's `--resume <session-id>` flag — resumes straight into that session at startup instead of a fresh one. */
+  resumeSessionId?: string;
 }
 
 // Same file cli.ts's own readPackageJson() reads (see that file's comment on why PACKAGE_ROOT,
-// not a static import) — read once here too, just for the welcome banner's version badge.
-function getPackageVersion(): string {
+// not a static import) — read once here too: `version` for the welcome banner's badge, `name` for
+// the exit banner's copy-pasteable `<name> --resume <id>` line (so it stays correct even if the
+// package is ever renamed again, rather than hardcoding "wangs-code" a second time).
+function getPackageInfo(): { name: string; version: string } {
   try {
     const raw = readFileSync(path.join(PACKAGE_ROOT, "package.json"), "utf8");
-    return (JSON.parse(raw) as { version: string }).version;
+    return JSON.parse(raw) as { name: string; version: string };
   } catch {
-    return "0.0.0";
+    return { name: "wangs-code", version: "0.0.0" };
   }
 }
 
@@ -72,8 +77,11 @@ export async function runRepl(params: ReplParams): Promise<void> {
   // loop below notices the stash once its `for await` unwinds and re-enters `query()` with
   // `resume` set. `currentSession` itself is read by /usage and /model, which ARE live methods.
   let currentSession: Query | undefined;
-  let pendingResumeId: string | undefined;
+  // Seeded from cli.ts's `--resume <id>` flag, if given — the first pass through the `for(;;)`
+  // loop below resumes straight into that session instead of starting fresh.
+  let pendingResumeId: string | undefined = params.resumeSessionId;
   let closing = false;
+  const packageInfo = getPackageInfo();
 
   const commandCtx: CommandContext = {
     chatStore,
@@ -121,7 +129,8 @@ export async function runRepl(params: ReplParams): Promise<void> {
   });
 
   const featureBuildController = new FeatureBuildController((prompt) => inputRouter.askLine(prompt), params.cwd);
-  const canUseTool = makeCanUseTool(inputRouter);
+  const permissionRequestStore = new PermissionRequestStore();
+  const canUseTool = makeCanUseTool(permissionRequestStore);
 
   const renderer = await createCliRenderer();
   const root = createRoot(renderer);
@@ -138,19 +147,7 @@ export async function runRepl(params: ReplParams): Promise<void> {
     renderer.destroy();
     // Printed after renderer.destroy() (back on the normal terminal, not the TUI's alt-screen) so
     // it's the last thing visible, not something the TUI clears away on its own exit.
-    if (sessionId) {
-      console.log(
-        [
-          "",
-          "─".repeat(60),
-          " Session ended. Resume it anytime:",
-          "   wangs-code   →   /resume",
-          ` Session ID: ${sessionId}`,
-          "─".repeat(60),
-          "",
-        ].join("\n"),
-      );
-    }
+    if (sessionId) printExitBanner(sessionId, packageInfo.name);
     process.exit(0);
   };
 
@@ -169,9 +166,12 @@ export async function runRepl(params: ReplParams): Promise<void> {
       onExit={() => void shutdown()}
       onInterrupt={onInterrupt}
       cwd={params.cwd}
-      version={getPackageVersion()}
+      version={packageInfo.version}
       sessionStoreActive={sessionStoreHandle !== null}
       getSession={() => currentSession}
+      permissionRequestStore={permissionRequestStore}
+      requestResume={commandCtx.requestResume}
+      sessionStore={sessionStoreHandle?.store}
     />,
   );
 
@@ -181,6 +181,34 @@ export async function runRepl(params: ReplParams): Promise<void> {
   for (;;) {
     const resume = pendingResumeId;
     pendingResumeId = undefined;
+
+    if (resume) {
+      try {
+        const [info, history] = await Promise.all([
+          getSessionInfo(resume, {
+            dir: params.cwd,
+            ...(sessionStoreHandle?.store ? { sessionStore: sessionStoreHandle.store } : {}),
+          }).catch(() => undefined),
+          getSessionMessages(resume, {
+            dir: params.cwd,
+            ...(sessionStoreHandle?.store ? { sessionStore: sessionStoreHandle.store } : {}),
+          }),
+        ]);
+
+        const blocks = convertSessionMessagesToBlocks(history);
+        chatStore.replaceBlocks(blocks);
+        const title = info?.summary || info?.customTitle || info?.firstPrompt || resume;
+        chatStore.pushHost(`Resumed session **${title}**.`);
+        sessionStatus.applyInit({
+          session_id: resume,
+          model: DEFAULT_MODEL,
+          permissionMode: DEFAULT_PERMISSION_MODE,
+          cwd: params.cwd,
+        });
+      } catch (err) {
+        chatStore.pushHost(`Could not load session history: ${err instanceof Error ? err.message : String(err)}`);
+      }
+    }
 
     const options = buildSessionOptions(params.cwd, canUseTool, featureBuildController, {
       sessionStore: sessionStoreHandle?.store,
@@ -205,6 +233,5 @@ export async function runRepl(params: ReplParams): Promise<void> {
     if (closing) break;
     if (pendingResumeId === undefined) break;
     inputQueue = new AsyncInputQueue(); // the old one is closed and permanently inert — see its own comment above
-    chatStore.pushHost(`Resumed session ${pendingResumeId}.`);
   }
 }
