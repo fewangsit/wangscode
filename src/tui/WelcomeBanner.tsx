@@ -1,7 +1,7 @@
 import { useSyncExternalStore } from "react";
 
 import type { SessionStatusStore } from "./session-status.ts";
-import { CARD_BG, CARD_BORDER, GOLD, LOGO_PATH, ROSE } from "./theme.ts";
+import { CARD_BORDER, GOLD, HERO_BORDER, ICON_BORDER, LOGO_PATH, ROSE } from "./theme.ts";
 
 function CommandCard({
   cmd,
@@ -20,7 +20,6 @@ function CommandCard({
         border: true,
         borderStyle: "rounded",
         borderColor: CARD_BORDER,
-        backgroundColor: CARD_BG,
         flexGrow: 1,
         flexDirection: "column",
         justifyContent: "space-between",
@@ -60,16 +59,40 @@ export function WelcomeBanner({
 
   return (
     <box style={{ flexDirection: "column", marginBottom: 1 }}>
-      {/* Adapted from a design reference's data-purpose="hero-banner" section — same structure
-          (bordered card, boxed icon on the left, title + version badge, tagline, a two-item status
-          line with colored bullet dots), with the reference's fictional "PRO-ARCH v2.4" badge and
-          "Memory Daemon: Active (L1-KV Cache)" status swapped for this package's real version and
-          real Postgres-mirroring state — everything else here is genuine, not decorative.
-          borderStyle "rounded" throughout this banner matches the reference's rounded-xl/rounded-lg
-          corners as closely as terminal box-drawing characters can. */}
-      <box style={{ border: true, borderStyle: "rounded", borderColor: GOLD, flexDirection: "column", paddingX: 2, paddingY: 1, marginBottom: 1 }}>
+      {/* Adapted from code.html's data-purpose="hero-banner" section — same structure (bordered
+          card, boxed icon on the left, title + version badge, tagline, a two-item status line with
+          colored bullet dots), with its fictional "PRO-ARCH v2.4" badge and "Memory Daemon: Active
+          (L1-KV Cache)" status swapped for this package's real version and real Postgres-mirroring
+          state — everything else here is genuine, not decorative.
+          borderStyle "rounded" matches code.html's rounded-xl corners as closely as terminal
+          box-drawing characters can. No backgroundColor — left transparent so the banner follows
+          whatever background the user's own terminal is set to, rather than imposing a fixed dark
+          panel color that could clash with it; HERO_BORDER/ICON_BORDER (pre-blended as if gold sat
+          at 40%/60% opacity over code.html's dark panel bg) are kept since a border still reads
+          fine over any terminal background. code.html's `shadow-glow-gold` blur is dropped outright
+          rather than faked — box-shadow blur has no terminal-cell analog worth approximating. */}
+      <box
+        style={{
+          border: true,
+          borderStyle: "rounded",
+          borderColor: HERO_BORDER,
+          flexDirection: "column",
+          paddingX: 2,
+          paddingY: 1,
+          marginBottom: 1,
+        }}
+      >
         <box style={{ flexDirection: "row", alignItems: "center" }}>
-          <box style={{ border: true, borderStyle: "rounded", borderColor: GOLD, flexShrink: 0, paddingX: 0, paddingY: 0 }}>
+          <box
+            style={{
+              border: true,
+              borderStyle: "rounded",
+              borderColor: ICON_BORDER,
+              flexShrink: 0,
+              paddingX: 0,
+              paddingY: 0,
+            }}
+          >
             {/* Forced to "blocks" (the universal colored half-block fallback, not a terminal-specific
                 graphics protocol) rather than "auto" — confirmed the logo renders as a clean, correct
                 architecture-glyph shape this way; "auto" can pick kitty/sixel depending on the

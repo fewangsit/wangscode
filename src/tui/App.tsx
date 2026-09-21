@@ -395,11 +395,28 @@ export function App({
         {blocks.filter((b) => b.kind !== "welcome").map((block) => renderBlock(block, syntaxStyle))}
       </scrollbox>
       <SuggestionBox suggestions={visibleSuggestions} selectedIndex={selectedIndex} />
+      {/* Matches code.html's #cli-form: rounded border, near-black bg, gold border (its
+          focus-within state — this is effectively always true, since useEffect above steals
+          focus back to this input the moment anything else would take it). */}
       <box
-        style={{ border: ["top", "bottom"], height: 3, flexShrink: 0, flexDirection: "row", alignItems: "center" }}
+        style={{
+          border: true,
+          borderStyle: "rounded",
+          borderColor: GOLD,
+          height: 3,
+          flexShrink: 0,
+          flexDirection: "row",
+          alignItems: "center",
+          paddingX: 1,
+        }}
         title={activePrompt ?? undefined}
       >
-        {activePrompt ? null : <text content="wangs-code ❯ " style={{ fg: GOLD }} />}
+        {activePrompt ? null : (
+          <box style={{ flexDirection: "row" }}>
+            <text content="wangs-code " style={{ fg: GOLD }} />
+            <text content="❯ " style={{ fg: "#38bdf8" }} />
+          </box>
+        )}
         <textarea
           ref={inputRef}
           placeholder={activePrompt ?? ""}

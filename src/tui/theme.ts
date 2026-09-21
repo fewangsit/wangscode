@@ -9,10 +9,16 @@ export const LOGO_PATH = path.join(PACKAGE_ROOT, "assets", "wangs-logo.png");
 export const GOLD = "#e0af68";
 export const BG = "#1a1b26";
 export const CARD_BORDER = "#1f293d";
-// From code.html's tui.card / tui.rose — used by the welcome banner's command-card grid, which
-// is implemented to match that mockup exactly rather than loosely inspired by it.
-export const CARD_BG = "#121722";
+// From code.html's tui.rose — code.html's one command card styled as a destructive action
+// (/exit), not the gold the rest use.
 export const ROSE = "#fb7185";
+// code.html's hero banner border is `border-tui-gold/40`; its icon box border is
+// `border-tui-gold/60`. No backgroundColor is set on either box here (left transparent, so the
+// banner follows the user's own terminal background) — these two are the border-only, pre-blended
+// approximation of that opacity (0.4×gold + 0.6×code.html's own dark panel bg, computed once
+// rather than guessed), which still reads correctly against any background.
+export const HERO_BORDER = "#665129";
+export const ICON_BORDER = "#8d6a2a";
 
 export const ROLE_COLOR: Record<string, string> = {
   user: GOLD,
