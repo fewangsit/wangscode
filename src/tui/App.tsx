@@ -1,18 +1,8 @@
-import path from "node:path";
-
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { useKeyboard, useRenderer, useSelectionHandler } from "@opentui/react";
-import {
-  defaultTextareaKeyBindings,
-  MacOSScrollAccel,
-  type KeyBinding,
-  type Renderable,
-  type SyntaxStyle,
-  type TextareaRenderable,
-} from "@opentui/core";
+import { defaultTextareaKeyBindings, MacOSScrollAccel, type KeyBinding, type Renderable, type TextareaRenderable } from "@opentui/core";
 import type { EffortLevel, ModelInfo, Query, SDKControlGetUsageResponse } from "@anthropic-ai/claude-agent-sdk";
 
-import type { ChatBlock } from "./chat-store.ts";
 import type { ChatStore } from "./chat-store.ts";
 import type { InputRouter } from "./input-router.ts";
 import type { SessionStatusStore } from "./session-status.ts";
@@ -20,32 +10,13 @@ import { detectActiveFragment } from "./autocomplete.ts";
 import { listFileMentions } from "./file-mentions.ts";
 import { listAvailableCommands, type CommandDescriptor } from "../command-registry.ts";
 import { createAppSyntaxStyle } from "./syntax-theme.ts";
-import { PACKAGE_ROOT } from "../package-root.ts";
-
-const LOGO_PATH = path.join(PACKAGE_ROOT, "assets", "wangs-logo.png");
-
-// Gold/amber accent, not blue — the whole palette used to lean on a blue accent (#7aa2f7);
-// everywhere that used it now reads GOLD instead.
-const GOLD = "#e0af68";
-const BG = "#1a1b26";
-
-const ROLE_COLOR: Record<string, string> = {
-  user: GOLD,
-  host: "#e0af68",
-  footer: "#565f89",
-};
-
-const TOOL_STATUS_GLYPH: Record<string, string> = {
-  running: "◌",
-  done: "✓",
-  error: "✗",
-};
-
-const TOOL_STATUS_COLOR: Record<string, string> = {
-  running: "#e0af68",
-  done: "#9ece6a",
-  error: "#f7768e",
-};
+import { BG, GOLD } from "./theme.ts";
+import { WelcomeBanner } from "./WelcomeBanner.tsx";
+import { renderBlock } from "./BlockRenderers.tsx";
+import { SuggestionBox, type Suggestion } from "./SuggestionBox.tsx";
+import { clampEffort, ModelPicker } from "./ModelPicker.tsx";
+import { UsagePanel } from "./UsagePanel.tsx";
+import { StatusBar } from "./StatusBar.tsx";
 
 // Plain Enter submits (like the old single-line <input>), Option/Alt+Enter inserts a newline
 // instead — the opposite of Textarea's own default table (return=newline, meta+return=submit),
@@ -65,275 +36,28 @@ export interface AppProps {
   /** Escape stops/interrupts the running turn — see repl.tsx, which wires this to the live session's `interrupt()`. */
   onInterrupt: () => void;
   cwd: string;
+  /** Computed once at startup (see repl.tsx) — `null` outside a git repo or before the first commit. */
+  gitBranch: string | null;
+  /** The package's own version (from package.json) — shown in the welcome banner's version badge. */
+  version: string;
+  /** Whether Postgres session mirroring is configured (WANGS_CODE_POSTGRES_URL set) — shown in the welcome banner in place of the design reference's fictional "Memory Daemon" line. */
+  sessionStoreActive: boolean;
   /** Read fresh on every autocomplete fetch — the underlying session changes across a /resume restart (see repl.tsx). May be undefined for the brief window before the first session is up. */
   getSession: () => Query | undefined;
 }
 
-interface Suggestion {
-  /** What actually gets spliced into the input after the trigger char. */
-  insertText: string;
-  /** What the suggestion row displays. */
-  label: string;
-}
-
-function WelcomeBanner({ sessionStatus }: { sessionStatus: SessionStatusStore }): React.ReactNode {
-  const { cwd, model } = useSyncExternalStore(sessionStatus.store.subscribe, sessionStatus.store.get);
-  return (
-    <box style={{ border: true, borderColor: GOLD, flexDirection: "column", paddingX: 2, paddingY: 1, marginBottom: 1 }}>
-      <box style={{ flexDirection: "row", alignItems: "center" }}>
-        {/* Forced to "blocks" (the universal colored half-block fallback, not a terminal-specific
-            graphics protocol) rather than "auto" — confirmed the logo renders as a clean, correct
-            crown shape this way; "auto" can pick kitty/sixel depending on the terminal, and a real
-            run showed those coming out distorted where "blocks" did not. */}
-        <image source={LOGO_PATH} protocol="blocks" fit="fit" style={{ width: 16, height: 8 }} />
-        <box style={{ flexDirection: "column", marginLeft: 2 }}>
-          <ascii-font text="Wangs Code" font="tiny" color={GOLD} />
-          <text content="Standalone coding assistant for Wangs Foundation projects." style={{ fg: "#565f89" }} />
-        </box>
-      </box>
-      <text content={`cwd: ${cwd ?? "(unknown)"}`} style={{ fg: "#565f89", marginTop: 1 }} />
-      <text content={`model: ${model ?? "(connecting...)"}`} style={{ fg: "#565f89" }} />
-      <text content="/create-feature — deterministic feature-build pipeline" style={{ fg: "#565f89", marginTop: 1 }} />
-      <text content="/usage — token/cost totals   /model — switch model   /resume — pick a past session   /exit — quit" style={{ fg: "#565f89" }} />
-    </box>
-  );
-}
-
-function ToolCallRow({ block, syntaxStyle }: { block: Extract<ChatBlock, { kind: "tool" }>; syntaxStyle: SyntaxStyle }): React.ReactNode {
-  const glyph = TOOL_STATUS_GLYPH[block.status];
-  const color = TOOL_STATUS_COLOR[block.status];
-  const label = block.isSkill ? `Using skill: ${(block.input as { skill?: string })?.skill ?? block.name}` : block.name;
-
-  return (
-    <box style={{ flexDirection: "column", marginBottom: 1 }}>
-      <text content={`${glyph} ${label}`} style={{ fg: color }} />
-      {block.input !== null ? <code content={JSON.stringify(block.input, null, 2)} filetype="json" syntaxStyle={syntaxStyle} /> : null}
-      {block.resultText ? <text content={block.resultText} style={{ fg: "#565f89" }} /> : null}
-    </box>
-  );
-}
-
-const THINKING_FRAMES = ["💭   ", "💭 . ", "💭 ..", "💭..."];
-const THINKING_FRAME_MS = 350;
-
-/** While a thinking block has no text yet (the model hasn't emitted a delta), there's nothing to
- *  show but the icon sitting there motionless — cycles a small dot animation instead, so it reads
- *  as "actively thinking" rather than possibly stalled. Stops the moment real text starts arriving
- *  (the streaming text itself is motion enough at that point). */
-function ThinkingRow({ block }: { block: Extract<ChatBlock, { kind: "thinking" }> }): React.ReactNode {
-  const [frame, setFrame] = useState(0);
-  const hasText = block.text.length > 0;
-
-  useEffect(() => {
-    if (hasText) return;
-    const id = setInterval(() => setFrame((f) => (f + 1) % THINKING_FRAMES.length), THINKING_FRAME_MS);
-    return () => clearInterval(id);
-  }, [hasText]);
-
-  const content = hasText ? `💭 ${block.text}` : THINKING_FRAMES[frame];
-  return <text content={content} style={{ fg: "#565f89", marginBottom: block.streaming ? 0 : 1 }} />;
-}
-
-function renderBlock(block: ChatBlock, syntaxStyle: SyntaxStyle, sessionStatus: SessionStatusStore): React.ReactNode {
-  switch (block.kind) {
-    case "welcome":
-      return <WelcomeBanner key={block.id} sessionStatus={sessionStatus} />;
-    case "user":
-      return <text key={block.id} content={`> ${block.text}`} style={{ fg: ROLE_COLOR.user, marginBottom: 1 }} />;
-    case "assistant":
-      return (
-        <markdown
-          key={block.id}
-          content={block.text}
-          syntaxStyle={syntaxStyle}
-          streaming={block.streaming}
-          style={{ marginBottom: block.streaming ? 0 : 1 }}
-        />
-      );
-    case "thinking":
-      return <ThinkingRow key={block.id} block={block} />;
-    case "tool":
-      return <ToolCallRow key={block.id} block={block} syntaxStyle={syntaxStyle} />;
-    case "host":
-      return <markdown key={block.id} content={block.text} syntaxStyle={syntaxStyle} style={{ marginBottom: 1, fg: ROLE_COLOR.host }} />;
-    case "footer":
-      return <text key={block.id} content={block.text} style={{ fg: ROLE_COLOR.footer, marginBottom: 1 }} />;
-  }
-}
-
-function SuggestionBox({ suggestions, selectedIndex }: { suggestions: Suggestion[]; selectedIndex: number }): React.ReactNode {
-  if (suggestions.length === 0) return null;
-  return (
-    <box style={{ border: true, flexShrink: 0, flexDirection: "column" }}>
-      {suggestions.map((s, i) => (
-        <text key={s.insertText} content={s.label} style={i === selectedIndex ? { fg: BG, bg: GOLD } : { fg: "#c0caf5" }} />
-      ))}
-    </box>
-  );
-}
-
-/** Picks a sensible default effort level out of a model's supported set — "high" if it's offered
- *  (matches Claude Code's own default), otherwise whatever the model does support. */
-function defaultEffortFor(levels: readonly EffortLevel[]): EffortLevel {
-  return levels.includes("high") ? "high" : (levels[0] ?? "high");
-}
-
-/** Keeps a candidate effort level valid for whichever model row is currently highlighted — moving
- *  to a model with a different supported set (or none at all) shouldn't leave a stale, invalid
- *  selection sitting around. */
-function clampEffort(effort: EffortLevel, levels: readonly EffortLevel[] | undefined): EffortLevel {
-  if (!levels || levels.length === 0) return effort;
-  return levels.includes(effort) ? effort : defaultEffortFor(levels);
-}
-
-function capitalize(s: string): string {
-  return s.length === 0 ? s : s[0]!.toUpperCase() + s.slice(1);
-}
-
-function ModelPicker({
-  models,
-  selectedIndex,
-  loading,
-  currentModel,
-  effort,
-}: {
-  models: ModelInfo[];
-  selectedIndex: number;
-  loading: boolean;
-  currentModel: string | null;
-  effort: EffortLevel;
-}): React.ReactNode {
-  const highlighted = models[selectedIndex];
-  return (
-    <box style={{ border: ["top"], flexGrow: 1, flexDirection: "column", paddingX: 2, paddingY: 1 }} title="Select model">
-      {loading ? (
-        <text content="Loading models..." style={{ fg: "#565f89" }} />
-      ) : models.length === 0 ? (
-        <text content="No models reported by this session." style={{ fg: "#565f89" }} />
-      ) : (
-        models.map((m, i) => {
-          const isCurrent = m.value === currentModel || m.resolvedModel === currentModel;
-          const label = `${isCurrent ? "✔" : " "} ${m.displayName} — ${m.description}`;
-          return <text key={m.value} content={label} style={i === selectedIndex ? { fg: BG, bg: GOLD } : { fg: "#c0caf5" }} />;
-        })
-      )}
-      {highlighted?.supportsEffort ? (
-        <text content={`● ${capitalize(effort)} effort   ←/→ to adjust`} style={{ fg: "#e0af68", marginTop: 1 }} />
-      ) : null}
-      <text content="This session only — Enter to select · Esc to cancel" style={{ fg: "#565f89", marginTop: 1 }} />
-    </box>
-  );
-}
-
-function StatusBar({ sessionStatus }: { sessionStatus: SessionStatusStore }): React.ReactNode {
-  const status = useSyncExternalStore(sessionStatus.store.subscribe, sessionStatus.store.get);
-  const left = `${status.model ?? "connecting..."}  ·  ${status.cwd ?? ""}`;
-  const right = status.effort ? `${capitalize(status.effort)} effort` : "";
-  return (
-    <box style={{ flexDirection: "row", justifyContent: "space-between", flexShrink: 0 }}>
-      <text content={left} style={{ fg: "#414868" }} />
-      <text content={right} style={{ fg: "#414868" }} />
-    </box>
-  );
-}
-
-function formatDuration(ms: number): string {
-  const totalSeconds = Math.round(ms / 1000);
-  const minutes = Math.floor(totalSeconds / 60);
-  const seconds = totalSeconds % 60;
-  return minutes > 0 ? `${minutes}m ${seconds}s` : `${seconds}s`;
-}
-
-function formatResetTime(iso: string | null | undefined): string {
-  if (!iso) return "unknown";
-  const date = new Date(iso);
-  if (Number.isNaN(date.getTime())) return "unknown";
-  return date.toLocaleString(undefined, { hour: "numeric", minute: "2-digit", month: "short", day: "numeric" });
-}
-
-const USAGE_BAR_WIDTH = 40;
-
-function renderUsageBar(utilization: number | null | undefined): string {
-  if (utilization === null || utilization === undefined) return "(not available)";
-  const pct = Math.max(0, Math.min(100, utilization));
-  const filled = Math.round((pct / 100) * USAGE_BAR_WIDTH);
-  return `${"█".repeat(filled)}${"░".repeat(USAGE_BAR_WIDTH - filled)} ${pct.toFixed(0)}% used`;
-}
-
-function UsageWindow({
-  title,
-  window,
-}: {
-  title: string;
-  window: { utilization: number | null; resets_at: string | null } | null | undefined;
-}): React.ReactNode {
-  if (window === null || window === undefined) return null;
-  return (
-    <box style={{ flexDirection: "column", marginTop: 1 }}>
-      <text content={title} style={{ fg: GOLD }} />
-      <text content={renderUsageBar(window.utilization)} style={{ fg: "#c0caf5" }} />
-      <text content={`Resets ${formatResetTime(window.resets_at)}`} style={{ fg: "#565f89" }} />
-    </box>
-  );
-}
-
-function UsagePanel({ loading, error, data }: { loading: boolean; error: string | null; data: SDKControlGetUsageResponse | null }): React.ReactNode {
-  if (loading) {
-    return (
-      <box style={{ border: ["top"], flexGrow: 1, flexDirection: "column", paddingX: 2, paddingY: 1 }} title="Usage">
-        <text content="Loading usage..." style={{ fg: "#565f89" }} />
-      </box>
-    );
-  }
-  if (error || !data) {
-    return (
-      <box style={{ border: ["top"], flexGrow: 1, flexDirection: "column", paddingX: 2, paddingY: 1 }} title="Usage">
-        <text content={`Could not load usage: ${error ?? "no data"}`} style={{ fg: "#f7768e" }} />
-        <text content="Esc to close" style={{ fg: "#565f89", marginTop: 1 }} />
-      </box>
-    );
-  }
-
-  const { session, rate_limits_available, rate_limits } = data;
-  const modelUsageEntries = Object.values(session.model_usage);
-  const totalInput = modelUsageEntries.reduce((sum, u) => sum + u.inputTokens, 0);
-  const totalOutput = modelUsageEntries.reduce((sum, u) => sum + u.outputTokens, 0);
-  const totalCacheRead = modelUsageEntries.reduce((sum, u) => sum + u.cacheReadInputTokens, 0);
-  const totalCacheWrite = modelUsageEntries.reduce((sum, u) => sum + u.cacheCreationInputTokens, 0);
-
-  return (
-    <box style={{ border: ["top"], flexGrow: 1, flexDirection: "column", paddingX: 2, paddingY: 1 }} title="Usage">
-      <text content="Session" style={{ fg: GOLD }} />
-      <text content={`Total cost: $${session.total_cost_usd.toFixed(4)}`} style={{ fg: "#c0caf5", marginTop: 1 }} />
-      <text
-        content={`Total duration (API): ${formatDuration(session.total_api_duration_ms)} · duration (wall): ${formatDuration(session.total_duration_ms)}`}
-        style={{ fg: "#c0caf5" }}
-      />
-      <text
-        content={`Total code changes: ${session.total_lines_added} lines added, ${session.total_lines_removed} lines removed`}
-        style={{ fg: "#c0caf5" }}
-      />
-      <text
-        content={`Usage: ${totalInput.toLocaleString()} input, ${totalOutput.toLocaleString()} output, ${totalCacheRead.toLocaleString()} cache read, ${totalCacheWrite.toLocaleString()} cache write`}
-        style={{ fg: "#c0caf5" }}
-      />
-      {rate_limits_available && rate_limits ? (
-        <>
-          <UsageWindow title="Current session" window={rate_limits.five_hour} />
-          <UsageWindow title="Current week (all models)" window={rate_limits.seven_day} />
-        </>
-      ) : (
-        <text
-          content="Plan rate limits are not available for this session (API key / third-party provider)."
-          style={{ fg: "#565f89", marginTop: 1 }}
-        />
-      )}
-      <text content="Esc to close" style={{ fg: "#565f89", marginTop: 1 }} />
-    </box>
-  );
-}
-
-export function App({ chatStore, sessionStatus, inputRouter, onExit, onInterrupt, cwd, getSession }: AppProps): React.ReactNode {
+export function App({
+  chatStore,
+  sessionStatus,
+  inputRouter,
+  onExit,
+  onInterrupt,
+  cwd,
+  gitBranch,
+  version,
+  sessionStoreActive,
+  getSession,
+}: AppProps): React.ReactNode {
   const blocks = useSyncExternalStore(chatStore.store.subscribe, chatStore.store.get);
   const activePrompt = useSyncExternalStore(inputRouter.promptStore.subscribe, inputRouter.promptStore.get);
   const inputRef = useRef<TextareaRenderable>(null);
@@ -471,6 +195,15 @@ export function App({ chatStore, sessionStatus, inputRouter, onExit, onInterrupt
     const next = `${before}${activeFragment.trigger}${suggestion.insertText} ${after}`;
     inputRef.current.setText(next);
     setInputText(next); // ends with a trailing space, so the next fragment detection naturally comes back null
+  };
+
+  // Clicking a command card in the welcome banner — matches the design reference's stageCommand()
+  // (fills the input, doesn't submit it), so the user can still edit/add arguments before sending.
+  const insertCommand = (cmd: string): void => {
+    const next = `${cmd} `;
+    inputRef.current?.setText(next);
+    setInputText(next);
+    inputRef.current?.focus();
   };
 
   const closeModelPicker = (): void => {
@@ -659,16 +392,30 @@ export function App({ chatStore, sessionStatus, inputRouter, onExit, onInterrupt
   return (
     <box style={{ flexDirection: "column", width: "100%", height: "100%" }}>
       <scrollbox style={{ flexGrow: 1 }} stickyScroll stickyStart="bottom" focused={false} scrollAcceleration={scrollAcceleration}>
-        {blocks.map((block) => renderBlock(block, syntaxStyle, sessionStatus))}
+        {blocks.some((b) => b.kind === "welcome") ? (
+          <WelcomeBanner
+            sessionStatus={sessionStatus}
+            gitBranch={gitBranch}
+            version={version}
+            sessionStoreActive={sessionStoreActive}
+            onCommandClick={insertCommand}
+          />
+        ) : null}
+        {blocks.filter((b) => b.kind !== "welcome").map((block) => renderBlock(block, syntaxStyle))}
       </scrollbox>
       <SuggestionBox suggestions={visibleSuggestions} selectedIndex={selectedIndex} />
-      <box style={{ border: ["top", "bottom"], height: 3, flexShrink: 0 }} title={activePrompt ?? undefined}>
+      <box
+        style={{ border: ["top", "bottom"], height: 3, flexShrink: 0, flexDirection: "row", alignItems: "center" }}
+        title={activePrompt ?? undefined}
+      >
+        {activePrompt ? null : <text content="wangs-code ❯ " style={{ fg: GOLD }} />}
         <textarea
           ref={inputRef}
           placeholder={activePrompt ?? ""}
           keyBindings={CHAT_INPUT_KEY_BINDINGS}
           onContentChange={handleInputChange}
           onSubmit={handleSubmit}
+          style={{ flexGrow: 1 }}
           focused
         />
       </box>

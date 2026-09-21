@@ -1,3 +1,7 @@
+import { execFileSync } from "node:child_process";
+import { readFileSync } from "node:fs";
+import path from "node:path";
+
 import { Pool } from "pg";
 import { createCliRenderer } from "@opentui/core";
 import { createRoot } from "@opentui/react";
@@ -16,9 +20,35 @@ import { FeatureBuildController } from "./slash-commands.ts";
 import { PostgresSessionStore } from "./postgres-session-store.ts";
 import { handleSlashCommand } from "./command-registry.ts";
 import type { CommandContext } from "./command-registry.ts";
+import { PACKAGE_ROOT } from "./package-root.ts";
 
 export interface ReplParams {
   cwd: string;
+}
+
+// Computed once at startup, not per-render — real, not decorative: the welcome banner's
+// workspace-status grid shows it alongside cwd/model. `null` (not thrown) for anything that isn't
+// a git repo, or has no commits yet (no branch to name).
+function getGitBranch(cwd: string): string | null {
+  try {
+    const branch = execFileSync("git", ["rev-parse", "--abbrev-ref", "HEAD"], { cwd, stdio: ["ignore", "pipe", "ignore"] })
+      .toString()
+      .trim();
+    return branch.length > 0 && branch !== "HEAD" ? branch : null;
+  } catch {
+    return null;
+  }
+}
+
+// Same file cli.ts's own readPackageJson() reads (see that file's comment on why PACKAGE_ROOT,
+// not a static import) — read once here too, just for the welcome banner's version badge.
+function getPackageVersion(): string {
+  try {
+    const raw = readFileSync(path.join(PACKAGE_ROOT, "package.json"), "utf8");
+    return (JSON.parse(raw) as { version: string }).version;
+  } catch {
+    return "0.0.0";
+  }
 }
 
 // Postgres session mirroring is opt-in, not a new hard requirement — omitted entirely (both the
@@ -154,6 +184,9 @@ export async function runRepl(params: ReplParams): Promise<void> {
       onExit={() => void shutdown()}
       onInterrupt={onInterrupt}
       cwd={params.cwd}
+      gitBranch={getGitBranch(params.cwd)}
+      version={getPackageVersion()}
+      sessionStoreActive={sessionStoreHandle !== null}
       getSession={() => currentSession}
     />,
   );

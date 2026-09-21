@@ -1,0 +1,23 @@
+<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+  <rect x="0" y="0" width="100" height="100" fill="#090b10"/>
+  <path d="M10 38H35V90H10V38Z" fill="url(#gold-grad-left)"/>
+  <circle cx="22.5" cy="56" r="3.5" fill="#090b10"/>
+  <path d="M35 15H55V90H35V15Z" fill="url(#gold-grad-center)"/>
+  <path d="M42 28H48V42H42V28Z" fill="#090b10"/>
+  <path d="M55 38H90V90H74V62H68V90H55V38Z" fill="url(#gold-grad-right)"/>
+  <defs>
+    <linearGradient id="gold-grad-left" gradientUnits="userSpaceOnUse" x1="10" y1="38" x2="35" y2="90">
+      <stop stop-color="#f59e0b"/>
+      <stop offset="1" stop-color="#b45309"/>
+    </linearGradient>
+    <linearGradient id="gold-grad-center" gradientUnits="userSpaceOnUse" x1="35" y1="15" x2="55" y2="90">
+      <stop stop-color="#fde047"/>
+      <stop offset="0.5" stop-color="#e5a93c"/>
+      <stop offset="1" stop-color="#92400e"/>
+    </linearGradient>
+    <linearGradient id="gold-grad-right" gradientUnits="userSpaceOnUse" x1="55" y1="38" x2="90" y2="90">
+      <stop stop-color="#e5a93c"/>
+      <stop offset="1" stop-color="#78350f"/>
+    </linearGradient>
+  </defs>
+</svg>
