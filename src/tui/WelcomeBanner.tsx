@@ -1,5 +1,6 @@
 import { useSyncExternalStore } from "react";
 
+import { detectProjectWangsUiVersion } from "../mcp-sync.ts";
 import type { SessionStatusStore } from "./session-status.ts";
 import { CARD_BORDER, GOLD, HERO_BORDER, ICON_BORDER, LOGO_PATH, ROSE } from "./theme.ts";
 
@@ -38,6 +39,7 @@ function CommandCard({
 // code.html's rose accent (its one card styled as a destructive action, not the gold the rest use).
 const BANNER_COMMANDS: { cmd: string; desc: string; accent?: string }[] = [
   { cmd: "/create-feature", desc: "Deterministic feature-build pipeline" },
+  { cmd: "/mcp", desc: "Manage & sync MCP servers (wangs-ui, tools)" },
   { cmd: "/usage", desc: "Token/cost totals and plan rate limits" },
   { cmd: "/model", desc: "Switch the active model" },
   { cmd: "/resume", desc: "Pick a previous session to resume" },
@@ -48,14 +50,17 @@ export function WelcomeBanner({
   sessionStatus,
   version,
   sessionStoreActive,
+  cwd,
   onCommandClick,
 }: {
   sessionStatus: SessionStatusStore;
   version: string;
   sessionStoreActive: boolean;
+  cwd?: string;
   onCommandClick: (cmd: string) => void;
 }): React.ReactNode {
   const { model } = useSyncExternalStore(sessionStatus.store.subscribe, sessionStatus.store.get);
+  const wangsUiInfo = cwd ? detectProjectWangsUiVersion(cwd) : null;
 
   return (
     <box style={{ flexDirection: "column", marginBottom: 1 }}>
@@ -123,6 +128,33 @@ export function WelcomeBanner({
               <text content="Session Storage: " style={{ fg: "#565f89" }} />
               <text content={sessionStoreActive ? "Postgres (mirrored)" : "local only"} style={{ fg: "#c0caf5" }} />
             </box>
+            <box style={{ flexDirection: "row" }}>
+              <text content={wangsUiInfo ? "● " : "○ "} style={{ fg: wangsUiInfo ? "#9ece6a" : "#f7768e" }} />
+              <text content="Wangs UI: " style={{ fg: "#565f89" }} />
+              <text content={wangsUiInfo ? `v${wangsUiInfo.version}` : "not detected"} style={{ fg: wangsUiInfo ? "#c0caf5" : "#f7768e" }} />
+            </box>
+            {!wangsUiInfo ? (
+              <box
+                style={{
+                  border: true,
+                  borderStyle: "rounded",
+                  borderColor: "#e0af68",
+                  flexDirection: "column",
+                  paddingX: 1,
+                  paddingY: 0,
+                  marginTop: 1,
+                }}
+              >
+                <box style={{ flexDirection: "row" }}>
+                  <text content="⚠️  Wangs UI Not Detected: " style={{ fg: "#e0af68" }} />
+                  <text content="No @wangs-ui/* packages found in this project." style={{ fg: "#c0caf5" }} />
+                </box>
+                <text
+                  content="Component docs, UI research subagents, and wangs-ui MCP tools are inactive. Run /mcp to configure or install @wangs-ui/react-core to enable them."
+                  style={{ fg: "#94a3b8" }}
+                />
+              </box>
+            ) : null}
           </box>
         </box>
       </box>

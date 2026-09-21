@@ -1,7 +1,14 @@
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { useKeyboard, useRenderer, useSelectionHandler } from "@opentui/react";
-import { defaultTextareaKeyBindings, MacOSScrollAccel, type KeyBinding, type Renderable, type TextareaRenderable } from "@opentui/core";
-import type { EffortLevel, ModelInfo, Query, SDKControlGetUsageResponse, SessionStore } from "@anthropic-ai/claude-agent-sdk";
+import {
+  defaultTextareaKeyBindings,
+  MacOSScrollAccel,
+  type KeyBinding,
+  type Renderable,
+  type ScrollBoxRenderable,
+  type TextareaRenderable,
+} from "@opentui/core";
+import type { EffortLevel, McpServerStatus, ModelInfo, Query, SDKControlGetUsageResponse, SessionStore } from "@anthropic-ai/claude-agent-sdk";
 import { listSessions } from "@anthropic-ai/claude-agent-sdk";
 
 import type { ChatStore } from "./chat-store.ts";
@@ -21,6 +28,8 @@ import { UsagePanel } from "./UsagePanel.tsx";
 import { StatusBar } from "./StatusBar.tsx";
 import { permissionOptionsFor, PermissionPrompt } from "./PermissionPrompt.tsx";
 import { SessionPicker, type SessionInfo } from "./SessionPicker.tsx";
+import { getServerActions, McpPanel, type McpPanelView, type McpServerAction, MCP_SERVER_ACTIONS } from "./McpPanel.tsx";
+import { detectProjectWangsUiVersion, syncWangsUiMcp } from "../mcp-sync.ts";
 
 // Plain Enter submits (like the old single-line <input>), Option/Alt+Enter inserts a newline
 // instead — the opposite of Textarea's own default table (return=newline, meta+return=submit),
@@ -154,6 +163,13 @@ export function App({
   const [sessionPickerSessions, setSessionPickerSessions] = useState<SessionInfo[]>([]);
   const [sessionPickerIndex, setSessionPickerIndex] = useState(0);
   const [sessionPickerLoading, setSessionPickerLoading] = useState(false);
+
+  // The interactive /mcp overlay — same pattern as /model, /usage, and /resume.
+  const [mcpPanelOpen, setMcpPanelOpen] = useState(false);
+  const [mcpPanelView, setMcpPanelView] = useState<McpPanelView>({ kind: "servers", selectedIdx: 0 });
+  const [mcpServers, setMcpServers] = useState<McpServerStatus[]>([]);
+  const [mcpLoading, setMcpLoading] = useState(false);
+  const mcpToolDetailScrollRef = useRef<ScrollBoxRenderable | null>(null);
 
   // The canUseTool permission overlay — reset to the first option each time a *different* request
   // comes in (identity check via toolName+label, since `permissionRequest` is a fresh object per
@@ -363,6 +379,225 @@ export function App({
     requestResume?.(picked.sessionId);
   };
 
+  const closeMcpPanel = (): void => {
+    mcpActionSeqRef.current++;
+    setMcpPanelOpen(false);
+    setMcpLoading(false);
+    inputRef.current?.setText("");
+    setInputText("");
+  };
+
+  const openMcpPanel = (): void => {
+    setMcpPanelOpen(true);
+    setMcpLoading(true);
+    setMcpPanelView({ kind: "servers", selectedIdx: 0 });
+    setMcpServers([]);
+
+    const session = getSession();
+    if (!session) {
+      setMcpLoading(false);
+      return;
+    }
+    void session
+      .mcpServerStatus()
+      .then((servers) => {
+        let list = servers;
+        const hasWangsUi = servers.some((s) => s.name === "wangs-ui");
+        if (!hasWangsUi) {
+          const wangsVersion = cwd ? detectProjectWangsUiVersion(cwd) : null;
+          list = [
+            ...servers,
+            {
+              name: "wangs-ui",
+              status: "disabled",
+              error: wangsVersion ? "Not configured in project .mcp.json" : "Not installed (@wangs-ui not detected in project)",
+              scope: "project",
+            },
+          ];
+        }
+        setMcpServers(list);
+        setMcpLoading(false);
+      })
+      .catch((err: unknown) => {
+        chatStore.pushHost(`Could not list MCP servers: ${err instanceof Error ? err.message : String(err)}`);
+        setMcpLoading(false);
+      });
+  };
+
+  const mcpActionSeqRef = useRef(0);
+
+  const handleMcpAction = async (serverIdx: number, action: McpServerAction): Promise<void> => {
+    const server = mcpServers[serverIdx];
+    if (!server) return;
+
+    if (action === "Show Tools") {
+      setMcpPanelView({ kind: "tools", serverIdx, selectedIdx: 0 });
+      return;
+    }
+
+    const session = getSession();
+    if (!session) return;
+
+    if (action.startsWith("Update to @wangs-ui/mcp@") || action.startsWith("Install @wangs-ui/mcp@") || action.startsWith("Sync with project")) {
+      const seq = ++mcpActionSeqRef.current;
+      setMcpLoading(true);
+      try {
+        const versionMatch = action.match(/@wangs-ui\/mcp@([^ )]+)/);
+        const explicitVersion = versionMatch?.[1];
+
+        const res = await syncWangsUiMcp(cwd, session, explicitVersion);
+        if (!res.success) {
+          chatStore.pushHost(`Could not sync @wangs-ui/mcp: ${res.error}`);
+          return;
+        }
+
+        // Reconnection runs asynchronously in the subprocess.
+        // Poll mcpServerStatus() every 400ms until status becomes "connected"
+        const startTime = Date.now();
+        const timeoutMs = 10000;
+        let lastServers: McpServerStatus[] = [];
+        let target: McpServerStatus | undefined;
+
+        while (Date.now() - startTime < timeoutMs) {
+          if (mcpActionSeqRef.current !== seq) return;
+          await new Promise((r) => setTimeout(r, 400));
+          if (mcpActionSeqRef.current !== seq) return;
+
+          lastServers = await session.mcpServerStatus();
+          target = lastServers.find((s) => s.name === "wangs-ui");
+
+          setMcpServers(lastServers);
+          const newIdx = lastServers.findIndex((s) => s.name === "wangs-ui");
+          if (newIdx !== -1) {
+            setMcpPanelView((v) => (v.kind === "actions" || v.kind === "tools" || v.kind === "tool-detail" ? { ...v, serverIdx: newIdx } : v));
+          }
+
+          if (target?.status === "connected") {
+            break;
+          }
+
+          if (target?.status === "failed" && Date.now() - startTime > 2000) {
+            break;
+          }
+        }
+
+        if (target?.status === "connected") {
+          chatStore.pushHost(`Connected to MCP server **wangs-ui** (@wangs-ui/mcp@${res.targetVersion}, ${target.tools?.length ?? 0} tools).`);
+        } else if (target?.error) {
+          chatStore.pushHost(`Failed to connect wangs-ui MCP server: ${target.error}`);
+        } else {
+          chatStore.pushHost(`Configured @wangs-ui/mcp@${res.targetVersion} in .mcp.json.`);
+        }
+      } catch (err) {
+        chatStore.pushHost(`Failed to sync wangs-ui MCP: ${err instanceof Error ? err.message : String(err)}`);
+      } finally {
+        if (mcpActionSeqRef.current === seq) {
+          setMcpLoading(false);
+        }
+      }
+      return;
+    }
+
+    if (action === "Reconnect") {
+      const seq = ++mcpActionSeqRef.current;
+      setMcpLoading(true);
+      try {
+        await session.reconnectMcpServer(server.name);
+
+        // Reconnection in the MCP subprocess runs asynchronously.
+        // Poll mcpServerStatus() every 400ms until status becomes "connected"
+        // or a confirmed failure after at least 2s, with a 10s maximum timeout.
+        const startTime = Date.now();
+        const timeoutMs = 10000;
+        let lastServers: McpServerStatus[] = [];
+        let target: McpServerStatus | undefined;
+
+        while (Date.now() - startTime < timeoutMs) {
+          if (mcpActionSeqRef.current !== seq) return;
+          await new Promise((r) => setTimeout(r, 400));
+          if (mcpActionSeqRef.current !== seq) return;
+
+          lastServers = await session.mcpServerStatus();
+          target = lastServers.find((s) => s.name === server.name);
+
+          // Update server list state so UI reflects live status
+          setMcpServers(lastServers);
+          const newIdx = lastServers.findIndex((s) => s.name === server.name);
+          if (newIdx !== -1) {
+            setMcpPanelView((v) => (v.kind === "actions" || v.kind === "tools" || v.kind === "tool-detail" ? { ...v, serverIdx: newIdx } : v));
+          }
+
+          if (target?.status === "connected") {
+            break;
+          }
+
+          if (target?.status === "failed" && Date.now() - startTime > 2000) {
+            break;
+          }
+        }
+
+        if (target?.status === "connected") {
+          chatStore.pushHost(`Connected to MCP server **${server.name}** (${target.tools?.length ?? 0} tools).`);
+        } else if (target?.error) {
+          chatStore.pushHost(`Failed to reconnect **${server.name}**: ${target.error}`);
+        }
+      } catch (err) {
+        chatStore.pushHost(`Failed to reconnect ${server.name}: ${err instanceof Error ? err.message : String(err)}`);
+      } finally {
+        if (mcpActionSeqRef.current === seq) {
+          setMcpLoading(false);
+        }
+      }
+      return;
+    }
+
+    if (action === "Toggle") {
+      const seq = ++mcpActionSeqRef.current;
+      setMcpLoading(true);
+      try {
+        const enable = server.status === "disabled";
+        await session.toggleMcpServer(server.name, enable);
+
+        if (enable) {
+          // Enabling a server connects it asynchronously — poll until connected or timeout
+          const startTime = Date.now();
+          const timeoutMs = 10000;
+          let lastServers: McpServerStatus[] = [];
+          let target: McpServerStatus | undefined;
+
+          while (Date.now() - startTime < timeoutMs) {
+            if (mcpActionSeqRef.current !== seq) return;
+            await new Promise((r) => setTimeout(r, 400));
+            if (mcpActionSeqRef.current !== seq) return;
+
+            lastServers = await session.mcpServerStatus();
+            target = lastServers.find((s) => s.name === server.name);
+            setMcpServers(lastServers);
+            const newIdx = lastServers.findIndex((s) => s.name === server.name);
+            if (newIdx !== -1) {
+              setMcpPanelView((v) => (v.kind === "actions" || v.kind === "tools" || v.kind === "tool-detail" ? { ...v, serverIdx: newIdx } : v));
+            }
+
+            if (target?.status === "connected" || (target?.status === "failed" && Date.now() - startTime > 2000)) {
+              break;
+            }
+          }
+        } else {
+          // Disabling is fast — fetch once
+          const updated = await session.mcpServerStatus();
+          setMcpServers(updated);
+        }
+      } catch (err) {
+        chatStore.pushHost(`Failed to toggle ${server.name}: ${err instanceof Error ? err.message : String(err)}`);
+      } finally {
+        if (mcpActionSeqRef.current === seq) {
+          setMcpLoading(false);
+        }
+      }
+      return;
+    }
+  };
+
   useKeyboard((key) => {
     if (key.ctrl && key.name === "c") {
       onExit();
@@ -434,6 +669,70 @@ export function App({
       return;
     }
 
+    if (mcpPanelOpen) {
+      if (mcpPanelView.kind === "servers") {
+        if (mcpServers.length > 0 && key.name === "up") {
+          setMcpPanelView({ ...mcpPanelView, selectedIdx: (mcpPanelView.selectedIdx - 1 + mcpServers.length) % mcpServers.length });
+        } else if (mcpServers.length > 0 && key.name === "down") {
+          setMcpPanelView({ ...mcpPanelView, selectedIdx: (mcpPanelView.selectedIdx + 1) % mcpServers.length });
+        } else if (key.name === "escape") {
+          closeMcpPanel();
+        } else if (key.name === "return") {
+          if (mcpServers.length > 0) {
+            setMcpPanelView({ kind: "actions", serverIdx: mcpPanelView.selectedIdx, selectedIdx: 0 });
+          }
+        }
+      } else if (mcpPanelView.kind === "actions") {
+        if (mcpLoading) {
+          if (key.name === "escape") {
+            closeMcpPanel();
+          }
+          return;
+        }
+        const server = mcpServers[mcpPanelView.serverIdx];
+        const actions = server ? getServerActions(server, cwd) : MCP_SERVER_ACTIONS;
+        if (key.name === "up") {
+          setMcpPanelView({ ...mcpPanelView, selectedIdx: (mcpPanelView.selectedIdx - 1 + actions.length) % actions.length });
+        } else if (key.name === "down") {
+          setMcpPanelView({ ...mcpPanelView, selectedIdx: (mcpPanelView.selectedIdx + 1) % actions.length });
+        } else if (key.name === "escape") {
+          setMcpPanelView({ kind: "servers", selectedIdx: mcpPanelView.serverIdx });
+        } else if (key.name === "return") {
+          const action = actions[mcpPanelView.selectedIdx];
+          if (action) {
+            void handleMcpAction(mcpPanelView.serverIdx, action);
+          }
+        }
+      } else if (mcpPanelView.kind === "tools") {
+        const server = mcpServers[mcpPanelView.serverIdx];
+        const tools = server?.tools ?? [];
+        if (tools.length > 0 && key.name === "up") {
+          setMcpPanelView({ ...mcpPanelView, selectedIdx: (mcpPanelView.selectedIdx - 1 + tools.length) % tools.length });
+        } else if (tools.length > 0 && key.name === "down") {
+          setMcpPanelView({ ...mcpPanelView, selectedIdx: (mcpPanelView.selectedIdx + 1) % tools.length });
+        } else if (key.name === "escape") {
+          setMcpPanelView({ kind: "actions", serverIdx: mcpPanelView.serverIdx, selectedIdx: 0 });
+        } else if (key.name === "return") {
+          if (tools.length > 0) {
+            setMcpPanelView({ kind: "tool-detail", serverIdx: mcpPanelView.serverIdx, toolIdx: mcpPanelView.selectedIdx });
+          }
+        }
+      } else if (mcpPanelView.kind === "tool-detail") {
+        if (key.name === "up") {
+          if (mcpToolDetailScrollRef.current) {
+            mcpToolDetailScrollRef.current.scrollTop = Math.max(0, mcpToolDetailScrollRef.current.scrollTop - 2);
+          }
+        } else if (key.name === "down") {
+          if (mcpToolDetailScrollRef.current) {
+            mcpToolDetailScrollRef.current.scrollTop += 2;
+          }
+        } else if (key.name === "escape") {
+          setMcpPanelView({ kind: "tools", serverIdx: mcpPanelView.serverIdx, selectedIdx: mcpPanelView.toolIdx });
+        }
+      }
+      return;
+    }
+
     if (usagePanelOpen) {
       if (key.name === "escape") closeUsagePanel();
       return;
@@ -480,7 +779,7 @@ export function App({
     // alongside useKeyboard's "return" handler for confirmModelPick()/closeUsagePanel(), the same
     // double-firing hazard the suggestion box's comment above describes for the same underlying
     // reason (both subscribe to the same keypress). The overlay owns Enter entirely while it's open.
-    if (sessionPickerOpen || modelPickerOpen || usagePanelOpen) return;
+    if (sessionPickerOpen || modelPickerOpen || usagePanelOpen || mcpPanelOpen) return;
     if (visibleSuggestions.length > 0) {
       acceptSuggestion(visibleSuggestions[selectedIndex]!);
       return;
@@ -496,6 +795,11 @@ export function App({
     if (!activePrompt && text === "/usage") {
       setInputText("");
       openUsagePanel();
+      return;
+    }
+    if (!activePrompt && text === "/mcp") {
+      setInputText("");
+      openMcpPanel();
       return;
     }
     if (!activePrompt && (text === "/resume" || text.startsWith("/resume "))) {
@@ -516,7 +820,13 @@ export function App({
     <box style={{ flexDirection: "column", width: "100%", height: "100%" }}>
       <scrollbox style={{ flexGrow: 1 }} stickyScroll stickyStart="bottom" focused={false} scrollAcceleration={scrollAcceleration}>
         {blocks.some((b) => b.kind === "welcome") ? (
-          <WelcomeBanner sessionStatus={sessionStatus} version={version} sessionStoreActive={sessionStoreActive} onCommandClick={insertCommand} />
+          <WelcomeBanner
+            sessionStatus={sessionStatus}
+            version={version}
+            sessionStoreActive={sessionStoreActive}
+            cwd={cwd}
+            onCommandClick={insertCommand}
+          />
         ) : null}
         {blocks.filter((b) => b.kind !== "welcome").map((block) => renderBlock(block, syntaxStyle))}
       </scrollbox>
@@ -574,6 +884,39 @@ export function App({
             onSelect={(idx) => {
               setSessionPickerIndex(idx);
               confirmSessionPick();
+            }}
+          />
+        </box>
+      ) : mcpPanelOpen ? (
+        <box style={{ flexShrink: 0 }}>
+          <McpPanel
+            view={mcpPanelView}
+            servers={mcpServers}
+            loading={mcpLoading}
+            cwd={cwd}
+            toolDetailScrollRef={mcpToolDetailScrollRef}
+            onClose={closeMcpPanel}
+            onBack={() => {
+              if (mcpPanelView.kind === "tool-detail") {
+                setMcpPanelView({ kind: "tools", serverIdx: mcpPanelView.serverIdx, selectedIdx: mcpPanelView.toolIdx });
+              } else if (mcpPanelView.kind === "tools") {
+                setMcpPanelView({ kind: "actions", serverIdx: mcpPanelView.serverIdx, selectedIdx: 0 });
+              } else if (mcpPanelView.kind === "actions") {
+                setMcpPanelView({ kind: "servers", selectedIdx: mcpPanelView.serverIdx });
+              } else {
+                closeMcpPanel();
+              }
+            }}
+            onSelectServer={(idx) => {
+              setMcpPanelView({ kind: "actions", serverIdx: idx, selectedIdx: 0 });
+            }}
+            onSelectAction={(serverIdx, action) => {
+              void handleMcpAction(serverIdx, action);
+            }}
+            onSelectTool={(toolIdx) => {
+              if (mcpPanelView.kind === "tools") {
+                setMcpPanelView({ kind: "tool-detail", serverIdx: mcpPanelView.serverIdx, toolIdx });
+              }
             }}
           />
         </box>

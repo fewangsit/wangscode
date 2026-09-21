@@ -97,82 +97,9 @@ describe("handleSlashCommand", () => {
     expect(lastHostText(chatStore)).toContain("session-direct");
   });
 
-  test("/mcp lists all servers when no arg is provided", async () => {
-    const { ctx, chatStore } = makeContext({
-      getSession: () => ({
-        mcpServerStatus: async () => [
-          { name: "wangs-ui", status: "connected", tools: [{ name: "docs-list" }, { name: "docs-show" }] },
-          { name: "my-server", status: "failed", error: "connection refused" },
-        ],
-      }),
-    });
-
+  test("/mcp is not dispatched here — App.tsx intercepts it directly to open the interactive MCP overlay", async () => {
+    const { ctx } = makeContext();
     const handled = await handleSlashCommand("/mcp", ctx);
-    expect(handled).toBe(true);
-    const text = lastHostText(chatStore);
-    expect(text).toContain("MCP Servers");
-    expect(text).toContain("wangs-ui");
-    expect(text).toContain("2 tools");
-    expect(text).toContain("my-server");
-    expect(text).toContain("connection refused");
-  });
-
-  test("/mcp <name> shows tool list for a specific server", async () => {
-    const { ctx, chatStore } = makeContext({
-      getSession: () => ({
-        mcpServerStatus: async () => [
-          {
-            name: "wangs-ui",
-            status: "connected",
-            tools: [
-              { name: "docs-list", description: "Lists docs" },
-              { name: "docs-show", description: "Shows a doc", annotations: { readOnly: true } },
-            ],
-          },
-        ],
-      }),
-    });
-
-    const handled = await handleSlashCommand("/mcp wangs-ui", ctx);
-    expect(handled).toBe(true);
-    const text = lastHostText(chatStore);
-    expect(text).toContain("wangs-ui");
-    expect(text).toContain("docs-list");
-    expect(text).toContain("Lists docs");
-    expect(text).toContain("docs-show");
-    expect(text).toContain("read-only");
-  });
-
-  test("/mcp <unknown> reports unknown server with suggestions", async () => {
-    const { ctx, chatStore } = makeContext({
-      getSession: () => ({
-        mcpServerStatus: async () => [{ name: "wangs-ui", status: "connected", tools: [] }],
-      }),
-    });
-
-    await handleSlashCommand("/mcp nonexistent", ctx);
-    const text = lastHostText(chatStore);
-    expect(text).toContain("nonexistent");
-    expect(text).toContain("wangs-ui");
-  });
-
-  test("/mcp reconnect <name> calls reconnectMcpServer and shows updated status", async () => {
-    const reconnectCalls: string[] = [];
-    const { ctx, chatStore } = makeContext({
-      getSession: () => ({
-        reconnectMcpServer: async (name: string) => {
-          reconnectCalls.push(name);
-        },
-        mcpServerStatus: async () => [{ name: "my-server", status: "connected", tools: [{ name: "some-tool" }] }],
-      }),
-    });
-
-    const handled = await handleSlashCommand("/mcp reconnect my-server", ctx);
-    expect(handled).toBe(true);
-    expect(reconnectCalls).toEqual(["my-server"]);
-    const text = lastHostText(chatStore);
-    expect(text).toContain("my-server");
-    expect(text).toContain("connected");
-    expect(text).toContain("some-tool");
+    expect(handled).toBe(false);
   });
 });

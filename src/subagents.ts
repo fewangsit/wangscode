@@ -8,50 +8,40 @@ import type { AgentDefinition } from "@anthropic-ai/claude-agent-sdk";
 // into Options.agents is the only wiring required (see session-options.ts
 // and pipeline/agent-runner.ts).
 
-// The Wangs UI design-system MCP server, scoped ONLY to wangs-ui-querier's
-// own AgentDefinition.mcpServers — not the main session's Options.mcpServers.
-// This makes "no inline MCP calls" a structural fact (the main model's tool
-// list never contains mcp__wangs-ui__* to begin with) rather than a prompt
-// rule the model has to remember to follow.
-//
-// Launched via `npx -y @wangs-ui/mcp@latest`, matching the canonical template
-// at wangs-ui-react's packages/create-react-app/template/agents/mcp.json —
-// @wangs-ui/mcp ships and releases in lockstep with the rest of the
-// @wangs-ui/* packages, so this is never a version behind whatever
-// component/prop set wangs-ui-querier is asked to look up.
-//
-// PREREQUISITE (deliberate, not an oversight): @wangs-ui/mcp is not on the
-// public npm registry (confirmed against registry.npmjs.org — 404). No
-// --registry= flag is hardcoded here on purpose: this project's own
-// .npmrc-driven registry resolution for the @wangs-ui scope is what makes
-// this resolve, exactly like every other @wangs-ui/* dependency a Wangs
-// Foundation project already needs. A stable private registry host (not a
-// LAN IP — those come and go) is the right thing to point @wangs-ui at; in
-// local dev, that's usually "build wangs-ui-react-main and publish it to a
-// local Verdaccio" rather than depending on an always-on private server.
-const WANGS_UI_MCP_SERVER = {
-  "wangs-ui": {
-    type: "stdio" as const,
-    command: "npx",
-    args: ["-y", "@wangs-ui/mcp@latest"],
-  },
-};
-
+// The wangs-ui-querier subagent queries the wangs-ui MCP server configured
+// in the project's .mcp.json or active session.
+// Note: We deliberately do NOT hardcode mcpServers here. Omitting mcpServers
+// allows wangs-ui-querier to inherit the session's active wangs-ui MCP server,
+// ensuring it uses the exact @wangs-ui/mcp version matching the consumer
+// project's installed @wangs-ui/* packages.
 const wangsUiQuerier: AgentDefinition = {
   description:
     "Specialized subagent for querying the wangs-ui MCP server. Collects component documentation, props (including accessibility props), and story examples before the main agent writes any Wangs UI component. Use PROACTIVELY before any @wangs-ui component is written or modified.",
-  tools: ["mcp__wangs-ui__docs-list", "mcp__wangs-ui__docs-show", "mcp__wangs-ui__docs-show-story"],
-  mcpServers: [WANGS_UI_MCP_SERVER],
+  tools: [
+    "mcp__wangs-ui__list-all-documentation",
+    "mcp__wangs-ui__get-documentation",
+    "mcp__wangs-ui__get-documentation-for-story",
+    "mcp__wangs-ui__get_testing_documentation",
+    "mcp__wangs-ui__list_testing_documentation",
+    "mcp__wangs-ui__query_graph",
+    "mcp__wangs-ui__get_node",
+    "mcp__wangs-ui__get_neighbors",
+    "mcp__wangs-ui__get_community",
+    "mcp__wangs-ui__god_nodes",
+    "mcp__wangs-ui__graph_stats",
+    "mcp__wangs-ui__shortest_path",
+  ],
   model: "sonnet",
   prompt: `You are a specialized Wangs UI component research agent. Your sole responsibility is to query the \`wangs-ui\` MCP server and return complete, structured component documentation to the caller. You do NOT write code or take any action beyond querying and reporting.
 
 ## Protocol
 
-1. Call \`docs-list\` to confirm the exact component names available before querying anything by name.
-2. Call \`docs-show\` for every component name the caller provided. Collect all props (type, default, required, description), all variants/states, and all story examples.
+1. Call \`list-all-documentation\` to discover and confirm available component and docs IDs.
+2. Call \`get-documentation\` with an \`id\` from that list to retrieve full component docs, props, usage examples, and stories.
 3. **Always check for an accessible-name prop** (\`aria-label\` or equivalent) on every component queried — state explicitly whether it exists, verbatim from the MCP response. This is a mandatory part of every report, not optional detail.
-4. Call \`docs-show-story\` for any story that shows a non-obvious prop combination the caller needs.
-5. Never assume a prop name or behavior from naming conventions or another library's API. Every prop you report must come verbatim from the MCP response.
+4. Call \`get-documentation-for-story\` for extra docs on a story variant not covered by the component docs.
+5. Use \`get_testing_documentation\` and \`list_testing_documentation\` when testing wrappers and locators are needed.
+6. Never assume a prop name or behavior from naming conventions or another library's API. Every prop you report must come verbatim from the MCP response.
 
 ## Output format
 
