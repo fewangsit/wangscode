@@ -5,7 +5,7 @@
 // rolling estimate of the real incoming rate (characters/second) rather than a fixed animation
 // speed, with a backlog-correction term so a burst doesn't leave the visible text permanently
 // behind — pure logic, no React/SDK import, independently testable.
-const MIN_CHARS_PER_SECOND = 15;
+const MIN_CHARS_PER_SECOND = 35;
 const MAX_CHARS_PER_SECOND = 400;
 const EMA_ALPHA = 0.3;
 // If draining the current backlog at the real incoming rate would take longer than this, reveal

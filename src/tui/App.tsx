@@ -30,6 +30,7 @@ import { permissionOptionsFor, PermissionPrompt } from "./PermissionPrompt.tsx";
 import { SessionPicker, type SessionInfo } from "./SessionPicker.tsx";
 import { getServerActions, McpPanel, type McpPanelView, type McpServerAction, MCP_SERVER_ACTIONS } from "./McpPanel.tsx";
 import { detectProjectWangsUiVersion, syncWangsUiMcp } from "../mcp-sync.ts";
+import { clearMcpToolCache, enrichMcpServersWithTools, fetchServerToolDefinitions, type McpTool } from "../mcp-tools.ts";
 
 // Plain Enter submits (like the old single-line <input>), Option/Alt+Enter inserts a newline
 // instead — the opposite of Textarea's own default table (return=newline, meta+return=submit),
@@ -85,10 +86,45 @@ export function App({
   // than smooth. MacOSScrollAccel ramps up for quick successive ticks and stays precise for slow
   // ones; memoized once so its own internal velocity-history state persists across scroll events
   // instead of resetting on every render.
-  //   tau: lowered from default so the ramp-up kicks in earlier on a fast swipe
-  //   maxMultiplier: raised so a sustained flick gesture actually scrolls far enough to feel fluid
-  const scrollAcceleration = useMemo(() => new MacOSScrollAccel({ tau: 80, maxMultiplier: 8 }), []);
+  const scrollAcceleration = useMemo(() => new MacOSScrollAccel({ A: 1.2, tau: 3, maxMultiplier: 8 }), []);
+  const chatScrollRef = useRef<ScrollBoxRenderable | null>(null);
+  // Suspends stickyScroll when the user has scrolled up to read earlier history,
+  // preventing streaming output from yanking the viewport back down.
+  const [isUserScrolledUp, setIsUserScrolledUp] = useState(false);
   const renderer = useRenderer();
+
+  const setChatScrollRef = (node: ScrollBoxRenderable | null): void => {
+    chatScrollRef.current = node;
+    if (!node) return;
+    // Strictly disable keyboard handling and focus on the chat scrollbox and all its children
+    // so Up/Down arrow keys NEVER scroll the chat history under any circumstances.
+    node.focusable = false;
+    node.verticalScrollBar.focusable = false;
+    node.horizontalScrollBar.focusable = false;
+    node.wrapper.focusable = false;
+    node.viewport.focusable = false;
+    node.content.focusable = false;
+    node.handleKeyPress = () => false;
+    node.verticalScrollBar.handleKeyPress = () => false;
+    node.horizontalScrollBar.handleKeyPress = () => false;
+    node.blur();
+    node.verticalScrollBar.blur();
+    node.horizontalScrollBar.blur();
+
+    const vsb = node.verticalScrollBar as unknown as {
+      _onChange?: (position: number) => void;
+      _wrappedOnChange?: boolean;
+    };
+    if (!vsb._wrappedOnChange) {
+      const originalOnChange = vsb._onChange;
+      vsb._wrappedOnChange = true;
+      vsb._onChange = (position: number) => {
+        originalOnChange?.(position);
+        const maxScrollTop = Math.max(0, node.scrollHeight - node.viewport.height);
+        setIsUserScrolledUp(position < maxScrollTop - 1);
+      };
+    }
+  };
 
   const [copiedVisible, setCopiedVisible] = useState(false);
   const copiedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -119,10 +155,13 @@ export function App({
   // so nothing else should ever end up holding focus — a click on the scrollback area, or any
   // empty spot, blurs the input (the renderer emits "focused_renderable" with the new target, or
   // null) without moving focus anywhere useful, which is exactly the "have to click the input box
-  // again" friction reported. Steal focus straight back whenever the target isn't already us.
+  // again" friction reported. Steal focus straight back and blur any clicked renderable.
   useEffect(() => {
     const handleFocusChange = (renderable: Renderable | null): void => {
-      if (renderable !== inputRef.current) inputRef.current?.focus();
+      if (renderable !== inputRef.current) {
+        renderable?.blur();
+        inputRef.current?.focus();
+      }
     };
     renderer.on("focused_renderable", handleFocusChange);
     return () => {
@@ -134,6 +173,9 @@ export function App({
   // ref-based value stays the single source of truth for what actually gets submitted (see
   // handleSubmit), so this mirror being one render tick behind on a fast paste is harmless.
   const [inputText, setInputText] = useState("");
+  // Tracks total line count and vertical scroll offset of the chat input textarea to dynamically
+  // grow the input box up to 10 lines and show +Nline indicators on top/bottom borders when overflowing.
+  const [inputScrollState, setInputScrollState] = useState({ lines: 1, scrollY: 0 });
   // Escape dismisses the overlay without touching the typed text — tracked separately from
   // `inputText` (a plain event-driven flag, not derived) and reset the moment the user types
   // again, via `handleInputChange` below rather than an effect.
@@ -224,12 +266,85 @@ export function App({
     }
   }, [activeFragment, cwd, getSession, sessionStatus]);
 
+  const lastScrollYRef = useRef(0);
+
+  const updateInputDimensions = (): void => {
+    const read = (): void => {
+      const ta = inputRef.current;
+      if (!ta) return;
+      const text = ta.plainText;
+      const rawLineCount = text.length === 0 ? 1 : text.split(/\r?\n/).length;
+      const count = Math.max(
+        1,
+        (ta as unknown as { editorView?: { getTotalVirtualLineCount?: () => number } }).editorView?.getTotalVirtualLineCount?.() ?? 0,
+        ta.virtualLineCount || 0,
+        ta.lineCount || 0,
+        rawLineCount,
+      );
+      const scrollY = ta.scrollY || 0;
+      lastScrollYRef.current = scrollY;
+      setInputScrollState((prev) => {
+        if (prev.lines === count && prev.scrollY === scrollY) return prev;
+        return { lines: count, scrollY };
+      });
+    };
+    read();
+    queueMicrotask(read);
+  };
+
+  const setInputRef = (node: TextareaRenderable | null): void => {
+    (inputRef as { current: TextareaRenderable | null }).current = node;
+    if (!node) return;
+
+    const ta = node as unknown as {
+      handleScroll: (event: unknown) => void;
+      onUpdate: (deltaTime: number) => void;
+      onMouseEvent?: (event: { type?: string }) => void;
+      _wrappedScrollListeners?: boolean;
+    };
+
+    if (!ta._wrappedScrollListeners) {
+      ta._wrappedScrollListeners = true;
+
+      const origHandleScroll = ta.handleScroll.bind(node);
+      ta.handleScroll = (event: unknown) => {
+        origHandleScroll(event);
+        updateInputDimensions();
+      };
+
+      const origSetViewport = node.editorView.setViewport.bind(node.editorView);
+      node.editorView.setViewport = (...args: Parameters<typeof origSetViewport>) => {
+        origSetViewport(...args);
+        updateInputDimensions();
+      };
+
+      const origOnUpdate = ta.onUpdate.bind(node);
+      ta.onUpdate = (deltaTime: number) => {
+        origOnUpdate(deltaTime);
+        const scrollY = node.scrollY || 0;
+        if (lastScrollYRef.current !== scrollY) {
+          lastScrollYRef.current = scrollY;
+          updateInputDimensions();
+        }
+      };
+
+      const origOnMouseEvent = ta.onMouseEvent?.bind(node);
+      ta.onMouseEvent = (event: { type?: string }) => {
+        origOnMouseEvent?.(event);
+        if (event.type === "scroll" || event.type === "drag" || event.type === "up") {
+          updateInputDimensions();
+        }
+      };
+    }
+  };
+
   // `<textarea>`'s change event (`ContentChangeEvent`) carries no payload — unlike `<input>`'s
   // `onInput`, which handed back the new value directly — so the current text is read straight off
   // the renderable instead.
   const handleInputChange = (): void => {
     setInputText(inputRef.current?.plainText ?? "");
     setDismissed(false);
+    updateInputDimensions();
   };
 
   const acceptSuggestion = (suggestion: Suggestion): void => {
@@ -243,6 +358,7 @@ export function App({
     inputRef.current.cursorOffset = before.length + inserted.length;
     inputRef.current.focus();
     setInputText(next); // ends with a trailing space, so the next fragment detection naturally comes back null
+    updateInputDimensions();
   };
 
   // Clicking a command card in the welcome banner — matches the design reference's stageCommand()
@@ -255,18 +371,21 @@ export function App({
     }
     setInputText(next);
     inputRef.current?.focus();
+    updateInputDimensions();
   };
 
   const closeModelPicker = (): void => {
     setModelPickerOpen(false);
     inputRef.current?.setText("");
     setInputText("");
+    setInputScrollState({ lines: 1, scrollY: 0 });
   };
 
   const closeUsagePanel = (): void => {
     setUsagePanelOpen(false);
     inputRef.current?.setText("");
     setInputText("");
+    setInputScrollState({ lines: 1, scrollY: 0 });
   };
 
   const openUsagePanel = (): void => {
@@ -348,6 +467,7 @@ export function App({
     setSessionPickerOpen(false);
     inputRef.current?.setText("");
     setInputText("");
+    setInputScrollState({ lines: 1, scrollY: 0 });
   };
 
   const openSessionPicker = (): void => {
@@ -385,6 +505,7 @@ export function App({
     setMcpLoading(false);
     inputRef.current?.setText("");
     setInputText("");
+    setInputScrollState({ lines: 1, scrollY: 0 });
   };
 
   const openMcpPanel = (): void => {
@@ -417,6 +538,10 @@ export function App({
         }
         setMcpServers(list);
         setMcpLoading(false);
+
+        void enrichMcpServersWithTools(list, cwd).then((enriched) => {
+          setMcpServers(enriched);
+        });
       })
       .catch((err: unknown) => {
         chatStore.pushHost(`Could not list MCP servers: ${err instanceof Error ? err.message : String(err)}`);
@@ -432,6 +557,22 @@ export function App({
 
     if (action === "Show Tools") {
       setMcpPanelView({ kind: "tools", serverIdx, selectedIdx: 0 });
+      const currentTools = server.tools as McpTool[] | undefined;
+      const needsEnrichment = !currentTools || currentTools.length === 0 || currentTools.some((t) => !t.description && !t.inputSchema);
+      if (needsEnrichment) {
+        void fetchServerToolDefinitions(server, cwd).then((enrichedTools) => {
+          if (enrichedTools.length > 0) {
+            setMcpServers((prev) => {
+              const updated = [...prev];
+              const s = updated[serverIdx];
+              if (s) {
+                updated[serverIdx] = { ...s, tools: enrichedTools };
+              }
+              return updated;
+            });
+          }
+        });
+      }
       return;
     }
 
@@ -442,6 +583,7 @@ export function App({
       const seq = ++mcpActionSeqRef.current;
       setMcpLoading(true);
       try {
+        clearMcpToolCache("wangs-ui");
         const versionMatch = action.match(/@wangs-ui\/mcp@([^ )]+)/);
         const explicitVersion = versionMatch?.[1];
 
@@ -482,6 +624,18 @@ export function App({
         }
 
         if (target?.status === "connected") {
+          void fetchServerToolDefinitions(target, cwd).then((enrichedTools) => {
+            if (enrichedTools.length > 0) {
+              setMcpServers((prev) => {
+                const updated = [...prev];
+                const newIdx = updated.findIndex((s) => s.name === "wangs-ui");
+                if (newIdx !== -1) {
+                  updated[newIdx] = { ...updated[newIdx], tools: enrichedTools };
+                }
+                return updated;
+              });
+            }
+          });
           chatStore.pushHost(`Connected to MCP server **wangs-ui** (@wangs-ui/mcp@${res.targetVersion}, ${target.tools?.length ?? 0} tools).`);
         } else if (target?.error) {
           chatStore.pushHost(`Failed to connect wangs-ui MCP server: ${target.error}`);
@@ -502,6 +656,7 @@ export function App({
       const seq = ++mcpActionSeqRef.current;
       setMcpLoading(true);
       try {
+        clearMcpToolCache(server.name);
         await session.reconnectMcpServer(server.name);
 
         // Reconnection in the MCP subprocess runs asynchronously.
@@ -537,6 +692,18 @@ export function App({
         }
 
         if (target?.status === "connected") {
+          void fetchServerToolDefinitions(target, cwd).then((enrichedTools) => {
+            if (enrichedTools.length > 0) {
+              setMcpServers((prev) => {
+                const updated = [...prev];
+                const newIdx = updated.findIndex((s) => s.name === server.name);
+                if (newIdx !== -1) {
+                  updated[newIdx] = { ...updated[newIdx], tools: enrichedTools };
+                }
+                return updated;
+              });
+            }
+          });
           chatStore.pushHost(`Connected to MCP server **${server.name}** (${target.tools?.length ?? 0} tools).`);
         } else if (target?.error) {
           chatStore.pushHost(`Failed to reconnect **${server.name}**: ${target.error}`);
@@ -602,6 +769,10 @@ export function App({
     if (key.ctrl && key.name === "c") {
       onExit();
       return;
+    }
+
+    if (!sessionPickerOpen && !modelPickerOpen && !usagePanelOpen && !mcpPanelOpen && !permissionRequest) {
+      updateInputDimensions();
     }
 
     if (permissionRequest) {
@@ -715,6 +886,23 @@ export function App({
         } else if (key.name === "return") {
           if (tools.length > 0) {
             setMcpPanelView({ kind: "tool-detail", serverIdx: mcpPanelView.serverIdx, toolIdx: mcpPanelView.selectedIdx });
+            const s = mcpServers[mcpPanelView.serverIdx];
+            const currentTools = s?.tools as McpTool[] | undefined;
+            const needsEnrichment = !currentTools || currentTools.length === 0 || currentTools.some((t) => !t.description && !t.inputSchema);
+            if (s && needsEnrichment) {
+              void fetchServerToolDefinitions(s, cwd).then((enrichedTools) => {
+                if (enrichedTools.length > 0) {
+                  setMcpServers((prev) => {
+                    const updated = [...prev];
+                    const target = updated[mcpPanelView.serverIdx];
+                    if (target) {
+                      updated[mcpPanelView.serverIdx] = { ...target, tools: enrichedTools };
+                    }
+                    return updated;
+                  });
+                }
+              });
+            }
           }
         }
       } else if (mcpPanelView.kind === "tool-detail") {
@@ -758,6 +946,27 @@ export function App({
       return;
     }
 
+    // Keyboard scrolling for chat scrollbox when no modals/pickers/suggestions are active
+    if (key.name === "pageup") {
+      if (chatScrollRef.current) {
+        const halfPage = Math.max(5, Math.floor((chatScrollRef.current.viewport.height || 20) / 2));
+        chatScrollRef.current.scrollBy(-halfPage);
+        setIsUserScrolledUp(true);
+      }
+      return;
+    }
+    if (key.name === "pagedown") {
+      if (chatScrollRef.current) {
+        const halfPage = Math.max(5, Math.floor((chatScrollRef.current.viewport.height || 20) / 2));
+        chatScrollRef.current.scrollBy(halfPage);
+        const maxScrollTop = Math.max(0, chatScrollRef.current.scrollHeight - chatScrollRef.current.viewport.height);
+        if (chatScrollRef.current.scrollTop >= maxScrollTop - 1) {
+          setIsUserScrolledUp(false);
+        }
+      }
+      return;
+    }
+
     // Nothing else claimed Escape (no picker, no panel, no suggestion box) — it stops/interrupts
     // whatever the session is currently doing, matching Claude Code's own Escape behavior.
     if (key.name === "escape") onInterrupt();
@@ -786,6 +995,7 @@ export function App({
     }
     const text = (inputRef.current?.plainText ?? "").trim();
     inputRef.current?.setText("");
+    setInputScrollState({ lines: 1, scrollY: 0 });
     if (text.length === 0) return;
     if (!activePrompt && text === "/model") {
       setInputText("");
@@ -813,12 +1023,46 @@ export function App({
       openSessionPicker();
       return;
     }
+    setIsUserScrolledUp(false);
+    chatScrollRef.current?.scrollTo(chatScrollRef.current.scrollHeight);
     inputRouter.submit(text);
   };
 
+  const isStreaming = useMemo(
+    () => blocks.some((b) => ((b.kind === "assistant" || b.kind === "thinking") && b.streaming) || (b.kind === "tool" && b.status === "running")),
+    [blocks],
+  );
+
+  const visibleLines = Math.min(10, Math.max(1, inputScrollState.lines));
+  const linesAbove = Math.max(0, inputScrollState.scrollY);
+  const linesBelow = Math.max(0, inputScrollState.lines - (inputScrollState.scrollY + visibleLines));
+
+  const topTitle = activePrompt
+    ? linesAbove > 0
+      ? `${activePrompt}  +${linesAbove}line`
+      : activePrompt
+    : linesAbove > 0
+      ? `+${linesAbove}line`
+      : undefined;
+
+  const topTitleAlignment: "left" | "right" = activePrompt && linesAbove === 0 ? "left" : "right";
+  const bottomTitle = linesBelow > 0 ? `+${linesBelow}line` : undefined;
+
   return (
     <box style={{ flexDirection: "column", width: "100%", height: "100%" }}>
-      <scrollbox style={{ flexGrow: 1 }} stickyScroll stickyStart="bottom" focused={false} scrollAcceleration={scrollAcceleration}>
+      <scrollbox
+        ref={setChatScrollRef}
+        style={{ flexGrow: 1 }}
+        stickyScroll={isStreaming && !isUserScrolledUp}
+        stickyStart="bottom"
+        focused={false}
+        focusable={false}
+        scrollAcceleration={scrollAcceleration}
+        scrollbarOptions={{ visible: false }}
+        verticalScrollbarOptions={{ visible: false }}
+        horizontalScrollbarOptions={{ visible: false }}
+        viewportCulling={false}
+      >
         {blocks.some((b) => b.kind === "welcome") ? (
           <WelcomeBanner
             sessionStatus={sessionStatus}
@@ -916,6 +1160,23 @@ export function App({
             onSelectTool={(toolIdx) => {
               if (mcpPanelView.kind === "tools") {
                 setMcpPanelView({ kind: "tool-detail", serverIdx: mcpPanelView.serverIdx, toolIdx });
+                const s = mcpServers[mcpPanelView.serverIdx];
+                const currentTools = s?.tools as McpTool[] | undefined;
+                const needsEnrichment = !currentTools || currentTools.length === 0 || currentTools.some((t) => !t.description && !t.inputSchema);
+                if (s && needsEnrichment) {
+                  void fetchServerToolDefinitions(s, cwd).then((enrichedTools) => {
+                    if (enrichedTools.length > 0) {
+                      setMcpServers((prev) => {
+                        const updated = [...prev];
+                        const target = updated[mcpPanelView.serverIdx];
+                        if (target) {
+                          updated[mcpPanelView.serverIdx] = { ...target, tools: enrichedTools };
+                        }
+                        return updated;
+                      });
+                    }
+                  });
+                }
               }
             }}
           />
@@ -923,32 +1184,37 @@ export function App({
       ) : (
         <>
           <SuggestionBox suggestions={visibleSuggestions} selectedIndex={selectedIndex} onSelect={acceptSuggestion} />
-          {/* Matches code.html's #cli-form: rounded border, near-black bg, gold border (its
-              focus-within state — this is effectively always true, since useEffect above steals
-              focus back to this input the moment anything else would take it). */}
+          {/* Matches code.html's #cli-form: rounded border, near-black bg, gold border.
+              Dynamically expands up to 10 lines of text (height: visibleLines + 2).
+              When text overflows beyond 10 lines, displays `+Nline` on the top border (linesAbove)
+              and/or on the bottom border (linesBelow). */}
           <box
             style={{
               border: true,
               borderStyle: "rounded",
               borderColor: GOLD,
-              height: 3,
+              height: visibleLines + 2,
               flexShrink: 0,
               flexDirection: "row",
-              alignItems: "center",
               paddingX: 1,
             }}
-            title={activePrompt ?? undefined}
+            title={topTitle}
+            titleAlignment={topTitleAlignment}
+            titleColor={GOLD}
+            bottomTitle={bottomTitle}
+            bottomTitleAlignment="right"
           >
             {activePrompt ? null : (
-              <box style={{ flexDirection: "row" }}>
+              <box style={{ flexDirection: "row", alignSelf: "flex-start" }}>
                 <text content="❯ " style={{ fg: "#38bdf8" }} />
               </box>
             )}
             <textarea
-              ref={inputRef}
+              ref={setInputRef}
               placeholder={activePrompt ?? ""}
               keyBindings={CHAT_INPUT_KEY_BINDINGS}
               onContentChange={handleInputChange}
+              onCursorChange={updateInputDimensions}
               onSubmit={handleSubmit}
               style={{ flexGrow: 1 }}
               focused

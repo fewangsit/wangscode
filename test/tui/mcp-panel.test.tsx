@@ -224,6 +224,32 @@ describe("McpPanel", () => {
     expect(output).toContain("● query: string (required) - Pertanyaan atau kata kunci pencarian");
   });
 
+  test("renders tool detail view loading details state", async () => {
+    const serversWithBareTool: McpServerStatus[] = [
+      {
+        name: "uiux-knowledge",
+        status: "connected",
+        tools: [
+          {
+            name: "query_graph",
+          },
+        ],
+      },
+    ];
+
+    const testRenderer = await createTestRenderer({ width: 80, height: 24 });
+    const root = createRoot(testRenderer.renderer);
+
+    root.render(<McpPanel view={{ kind: "tool-detail", serverIdx: 0, toolIdx: 0 }} servers={serversWithBareTool} loading={false} />);
+    await new Promise((r) => setTimeout(r, 60));
+    await testRenderer.renderOnce();
+
+    const output = testRenderer.captureCharFrame();
+    expect(output).toContain("query_graph");
+    expect(output).toContain("Description:");
+    expect(output).toContain("Loading details…");
+  });
+
   test("renders loading state", async () => {
     const testRenderer = await createTestRenderer({ width: 80, height: 8 });
     const root = createRoot(testRenderer.renderer);

@@ -23,7 +23,7 @@ export type ChatBlock =
 
 type StreamingKind = "assistant" | "thinking";
 
-const TICK_MS = 30;
+const TICK_MS = 50;
 
 /**
  * Chat scrollback, driven from outside React (repl.tsx's `for await` loop over the SDK session) —

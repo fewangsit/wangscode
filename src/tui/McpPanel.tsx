@@ -4,16 +4,9 @@ import type { ScrollBoxRenderable } from "@opentui/core";
 import { detectCurrentMcpVersion, detectProjectWangsUiVersion } from "../mcp-sync.ts";
 import { BG, CARD_BORDER, GOLD } from "./theme.ts";
 
-// The MCP protocol includes `inputSchema` on each tool (a JSON Schema object),
-// but the SDK's McpServerStatus.tools type omits it (carries only name, description,
-// annotations). Augment locally so the detail view can render parameters.
-type McpTool = NonNullable<McpServerStatus["tools"]>[number] & {
-  inputSchema?: {
-    type?: string;
-    properties?: Record<string, { type?: string; description?: string; enum?: unknown[] }>;
-    required?: string[];
-  };
-};
+import type { McpTool } from "../mcp-tools.ts";
+
+export type { McpTool };
 
 // ── View state (managed externally in App.tsx) ────────────────────────────────
 
@@ -532,6 +525,13 @@ function ToolDetailView({
               <text content="Description:" style={{ fg: "#94a3b8" }} />
               <box style={{ paddingLeft: 3 }}>
                 <text content={tool.description} style={{ fg: "#c0caf5" }} />
+              </box>
+            </box>
+          ) : !tool.inputSchema ? (
+            <box style={{ flexDirection: "column", marginTop: 1 }}>
+              <text content="Description:" style={{ fg: "#94a3b8" }} />
+              <box style={{ paddingLeft: 3 }}>
+                <text content="Loading details…" style={{ fg: "#565f89" }} />
               </box>
             </box>
           ) : null}

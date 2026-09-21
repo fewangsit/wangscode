@@ -51,7 +51,7 @@ function ThinkingRow({ block }: { block: Extract<ChatBlock, { kind: "thinking" }
   }, [hasText]);
 
   const content = hasText ? `💭 ${block.text}` : THINKING_FRAMES[frame];
-  return <text content={content} style={{ fg: "#565f89", marginBottom: block.streaming ? 0 : 1 }} />;
+  return <text content={content} style={{ fg: "#565f89", marginBottom: 1 }} />;
 }
 
 /** The welcome block is deliberately NOT handled here — it's rendered once, separately, directly
@@ -67,15 +67,7 @@ export function renderBlock(block: ChatBlock, syntaxStyle: SyntaxStyle): React.R
     case "user":
       return <text key={block.id} content={`> ${block.text}`} style={{ fg: ROLE_COLOR.user, marginBottom: 1 }} />;
     case "assistant":
-      return (
-        <markdown
-          key={block.id}
-          content={block.text}
-          syntaxStyle={syntaxStyle}
-          streaming={block.streaming}
-          style={{ marginBottom: block.streaming ? 0 : 1 }}
-        />
-      );
+      return <markdown key={block.id} content={block.text} syntaxStyle={syntaxStyle} streaming={block.streaming} style={{ marginBottom: 1 }} />;
     case "thinking":
       return <ThinkingRow key={block.id} block={block} />;
     case "tool":
