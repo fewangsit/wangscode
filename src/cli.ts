@@ -7,7 +7,7 @@
 // npm on Windows generates a .cmd wrapper that always calls `node` regardless of shebang, so this
 // script does not run as a global bin on Windows yet.
 import { execFileSync } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 
 import { runRepl } from "./repl.tsx";
@@ -59,17 +59,41 @@ function readPackageJson(): { name: string; version: string } {
   return JSON.parse(raw) as { name: string; version: string };
 }
 
-// Shells out to the same `npm install -g <pkg>@latest` a user would run by hand — deliberately not
-// hardcoding a registry URL (e.g. the local Verdaccio one this project happens to publish to
-// during development) so this keeps working unchanged once wangs-code moves to a real registry;
-// npm already resolves whatever registry the user has configured. `stdio: "inherit"` streams npm's
-// own real progress/output straight through rather than re-implementing it.
-function selfUpdate(): void {
+// Resolves the target registry for self-update:
+// 1. Explicit --registry argument if passed to the command
+// 2. WANGS_CODE_REGISTRY environment variable
+// 3. .npmrc registry setting (checked in PACKAGE_ROOT or cwd)
+// 4. Default Verdaccio registry at http://192.168.1.102:4873/
+function getTargetRegistry(argv: string[]): string {
+  const regIdx = argv.indexOf("--registry");
+  if (regIdx !== -1 && argv[regIdx + 1]) {
+    return argv[regIdx + 1]!;
+  }
+  if (process.env.WANGS_CODE_REGISTRY) {
+    return process.env.WANGS_CODE_REGISTRY;
+  }
+  const candidatePaths = [path.join(PACKAGE_ROOT, ".npmrc"), path.join(process.cwd(), ".npmrc")];
+  for (const p of candidatePaths) {
+    try {
+      if (existsSync(p)) {
+        const content = readFileSync(p, "utf8");
+        const match = content.match(/^registry\s*=\s*(.+)$/m);
+        if (match?.[1]) return match[1].trim();
+      }
+    } catch {
+      // Ignore read errors
+    }
+  }
+  return "http://192.168.1.102:4873/";
+}
+
+function selfUpdate(argv: string[]): void {
   const pkg = readPackageJson();
-  console.log(`Updating ${pkg.name} (currently ${pkg.version})...\n`);
+  const registry = getTargetRegistry(argv);
+  console.log(`Updating ${pkg.name} (currently ${pkg.version}) from ${registry}...\n`);
 
   try {
-    execFileSync("npm", ["install", "-g", `${pkg.name}@latest`], { stdio: "inherit" });
+    execFileSync("npm", ["install", "-g", `${pkg.name}@latest`, "--registry", registry], { stdio: "inherit" });
   } catch (err) {
     console.error(`\nUpdate failed: ${err instanceof Error ? err.message : String(err)}`);
     process.exitCode = 1;
@@ -86,7 +110,7 @@ async function main(): Promise<void> {
   const argv = process.argv.slice(2);
 
   if (argv.includes("--update") || argv.includes("-u")) {
-    selfUpdate();
+    selfUpdate(argv);
     return;
   }
 
