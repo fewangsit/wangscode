@@ -1,3 +1,5 @@
+import type { ScrollBoxRenderable } from "@opentui/core";
+
 import { BG, CARD_BORDER, GOLD, ROSE } from "./theme.ts";
 
 export type PermissionChoice = "allow-once" | "always-allow" | "deny";
@@ -23,9 +25,29 @@ export interface PermissionPromptProps {
   selectedIndex: number;
   onDeny?: () => void;
   onSelect?: (index: number) => void;
+  maxContentHeight?: number;
+  scrollRef?: React.RefObject<ScrollBoxRenderable | null>;
 }
 
-export function PermissionPrompt({ label, mcpServerName, options, selectedIndex, onDeny, onSelect }: PermissionPromptProps): React.ReactNode {
+export function PermissionPrompt({
+  label,
+  mcpServerName,
+  options,
+  selectedIndex,
+  onDeny,
+  onSelect,
+  maxContentHeight = 8,
+  scrollRef,
+}: PermissionPromptProps): React.ReactNode {
+  // Estimate number of lines taking horizontal wrap into account (assuming terminal width ~76)
+  const lines = label.split("\n");
+  const estimatedLines = lines.reduce((acc, line) => acc + Math.max(1, Math.ceil(line.length / 76)), 0);
+  const contentHeight = Math.max(1, Math.min(estimatedLines, maxContentHeight));
+  const isScrollable = estimatedLines > maxContentHeight;
+  const footerText = isScrollable
+    ? "↑/↓ to choose · PgUp/PgDn to scroll · Enter to confirm · Esc to deny"
+    : "This session only — ↑/↓ to choose · Enter to confirm · Esc to deny";
+
   return (
     <box
       style={{
@@ -35,20 +57,31 @@ export function PermissionPrompt({ label, mcpServerName, options, selectedIndex,
         flexDirection: "column",
         paddingX: 0,
         paddingY: 0,
+        flexShrink: 0,
       }}
     >
-      <box style={{ flexDirection: "row", justifyContent: "space-between", paddingX: 1, marginBottom: 1 }}>
+      <box style={{ flexDirection: "row", justifyContent: "space-between", paddingX: 1, marginBottom: 1, flexShrink: 0 }}>
         <text content="Permission requested" style={{ fg: GOLD }} />
         <text content="Esc to deny" style={{ fg: "#565f89" }} onMouseDown={onDeny} />
       </box>
       {mcpServerName ? (
-        <box style={{ paddingX: 1 }}>
+        <box style={{ paddingX: 1, flexShrink: 0 }}>
           <text content={`MCP server: ${mcpServerName}`} style={{ fg: "#565f89" }} />
         </box>
       ) : null}
-      <box style={{ paddingX: 1, marginBottom: 1 }}>
-        <text content={label} style={{ fg: "#c0caf5" }} />
-      </box>
+      <scrollbox
+        ref={scrollRef}
+        style={{
+          height: contentHeight,
+          flexShrink: 0,
+          marginBottom: 1,
+        }}
+        focused={false}
+      >
+        <box style={{ paddingX: 1 }}>
+          <text content={label} style={{ fg: "#c0caf5" }} />
+        </box>
+      </scrollbox>
       {options.map((opt, i) => {
         const isSelected = i === selectedIndex;
         const prefix = isSelected ? "❯ " : "  ";
@@ -61,6 +94,7 @@ export function PermissionPrompt({ label, mcpServerName, options, selectedIndex,
               alignItems: "center",
               paddingX: 1,
               backgroundColor: isSelected ? GOLD : undefined,
+              flexShrink: 0,
             }}
             onMouseDown={() => onSelect?.(i)}
           >
@@ -68,8 +102,8 @@ export function PermissionPrompt({ label, mcpServerName, options, selectedIndex,
           </box>
         );
       })}
-      <box style={{ paddingX: 1, marginTop: 1 }}>
-        <text content="This session only — ↑/↓ to choose · Enter to confirm · Esc to deny" style={{ fg: "#565f89" }} />
+      <box style={{ paddingX: 1, marginTop: 1, flexShrink: 0 }}>
+        <text content={footerText} style={{ fg: "#565f89" }} />
       </box>
     </box>
   );

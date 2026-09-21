@@ -206,12 +206,18 @@ export function App({
   // comes in (identity check via toolName+label, since `permissionRequest` is a fresh object per
   // call) so a previous answer's selection doesn't carry over to the next, unrelated prompt.
   const [permissionSelectedIndex, setPermissionSelectedIndex] = useState(0);
+  const permissionScrollRef = useRef<ScrollBoxRenderable | null>(null);
   const lastPermissionKeyRef = useRef<string | null>(null);
   const permissionKey = permissionRequest ? `${permissionRequest.toolName}:${permissionRequest.label}` : null;
   if (permissionKey !== lastPermissionKeyRef.current) {
     lastPermissionKeyRef.current = permissionKey;
     if (permissionKey !== null && permissionSelectedIndex !== 0) setPermissionSelectedIndex(0);
   }
+  useEffect(() => {
+    if (permissionScrollRef.current) {
+      permissionScrollRef.current.scrollTop = 0;
+    }
+  }, [permissionKey]);
   const permissionOptions = permissionOptionsFor(permissionRequest?.suggestions !== undefined);
 
   const isOverlayActive = Boolean(permissionRequest || usagePanelOpen || modelPickerOpen || sessionPickerOpen || mcpPanelOpen || artifactsPanelOpen);
@@ -879,6 +885,18 @@ export function App({
     }
 
     if (permissionRequest) {
+      if (key.name === "pageup" || (key.shift && key.name === "up")) {
+        if (permissionScrollRef.current) {
+          permissionScrollRef.current.scrollBy(-2);
+        }
+        return;
+      }
+      if (key.name === "pagedown" || (key.shift && key.name === "down")) {
+        if (permissionScrollRef.current) {
+          permissionScrollRef.current.scrollBy(2);
+        }
+        return;
+      }
       if (key.name === "up") {
         setPermissionSelectedIndex((i) => (i - 1 + permissionOptions.length) % permissionOptions.length);
       } else if (key.name === "down") {
@@ -1211,6 +1229,8 @@ export function App({
             mcpServerName={permissionRequest.mcpServerName}
             options={permissionOptions}
             selectedIndex={permissionSelectedIndex}
+            maxContentHeight={Math.max(3, Math.min(10, Math.floor((renderer.height || 24) * 0.35)))}
+            scrollRef={permissionScrollRef}
             onDeny={() => permissionRequest.resolve({ behavior: "deny", message: "User declined this tool call." })}
             onSelect={(idx) => {
               const picked = permissionOptions[idx];
