@@ -11,6 +11,8 @@ import {
 import type { EffortLevel, McpServerStatus, ModelInfo, Query, SDKControlGetUsageResponse, SessionStore } from "@anthropic-ai/claude-agent-sdk";
 import { listSessions } from "@anthropic-ai/claude-agent-sdk";
 
+import { spawn } from "node:child_process";
+
 import type { ChatStore } from "./chat-store.ts";
 import type { InputRouter } from "./input-router.ts";
 import type { SessionStatusStore } from "./session-status.ts";
@@ -29,6 +31,7 @@ import { StatusBar } from "./StatusBar.tsx";
 import { permissionOptionsFor, PermissionPrompt } from "./PermissionPrompt.tsx";
 import { SessionPicker, type SessionInfo } from "./SessionPicker.tsx";
 import { getServerActions, McpPanel, type McpPanelView, type McpServerAction, MCP_SERVER_ACTIONS } from "./McpPanel.tsx";
+import { ArtifactsPanel, type ArtifactItem } from "./ArtifactsPanel.tsx";
 import { detectProjectWangsUiVersion, syncWangsUiMcp } from "../mcp-sync.ts";
 import { clearMcpToolCache, enrichMcpServersWithTools, fetchServerToolDefinitions, type McpTool } from "../mcp-tools.ts";
 
@@ -151,24 +154,6 @@ export function App({
     copiedTimerRef.current = setTimeout(() => setCopiedVisible(false), 1500);
   });
 
-  // This is the only real input in the whole app (the scrollbox is explicitly `focused={false}`),
-  // so nothing else should ever end up holding focus — a click on the scrollback area, or any
-  // empty spot, blurs the input (the renderer emits "focused_renderable" with the new target, or
-  // null) without moving focus anywhere useful, which is exactly the "have to click the input box
-  // again" friction reported. Steal focus straight back and blur any clicked renderable.
-  useEffect(() => {
-    const handleFocusChange = (renderable: Renderable | null): void => {
-      if (renderable !== inputRef.current) {
-        renderable?.blur();
-        inputRef.current?.focus();
-      }
-    };
-    renderer.on("focused_renderable", handleFocusChange);
-    return () => {
-      renderer.off("focused_renderable", handleFocusChange);
-    };
-  }, [renderer]);
-
   // Mirrors the uncontrolled input's text purely to drive the @/-mention overlay below — the
   // ref-based value stays the single source of truth for what actually gets submitted (see
   // handleSubmit), so this mirror being one render tick behind on a fast paste is harmless.
@@ -213,6 +198,10 @@ export function App({
   const [mcpLoading, setMcpLoading] = useState(false);
   const mcpToolDetailScrollRef = useRef<ScrollBoxRenderable | null>(null);
 
+  // The interactive /artifacts overlay — same pattern as /mcp, /model, etc.
+  const [artifactsPanelOpen, setArtifactsPanelOpen] = useState(false);
+  const [artifactsSelectedIndex, setArtifactsSelectedIndex] = useState(0);
+
   // The canUseTool permission overlay — reset to the first option each time a *different* request
   // comes in (identity check via toolName+label, since `permissionRequest` is a fresh object per
   // call) so a previous answer's selection doesn't carry over to the next, unrelated prompt.
@@ -224,6 +213,25 @@ export function App({
     if (permissionKey !== null && permissionSelectedIndex !== 0) setPermissionSelectedIndex(0);
   }
   const permissionOptions = permissionOptionsFor(permissionRequest?.suggestions !== undefined);
+
+  const isOverlayActive = Boolean(permissionRequest || usagePanelOpen || modelPickerOpen || sessionPickerOpen || mcpPanelOpen || artifactsPanelOpen);
+
+  // When no overlay is active, the chat input is the only real input in the app.
+  // Steal focus back to the input if something else (like scrollback) is clicked.
+  // When an overlay is active (e.g. /artifacts, /model, /mcp), we do not steal focus.
+  useEffect(() => {
+    const handleFocusChange = (renderable: Renderable | null): void => {
+      if (isOverlayActive) return;
+      if (renderable !== inputRef.current) {
+        renderable?.blur();
+        inputRef.current?.focus();
+      }
+    };
+    renderer.on("focused_renderable", handleFocusChange);
+    return () => {
+      renderer.off("focused_renderable", handleFocusChange);
+    };
+  }, [renderer, isOverlayActive]);
 
   // Pure derivation from `inputText` — computed during render, not stored as its own state (an
   // earlier version set this from inside the effect below via `setState`, which oxlint correctly
@@ -293,8 +301,16 @@ export function App({
   };
 
   const setInputRef = (node: TextareaRenderable | null): void => {
+    const prev = inputRef.current;
+    if (prev && prev !== node) {
+      prev.blur();
+    }
     (inputRef as { current: TextareaRenderable | null }).current = node;
     if (!node) return;
+
+    if (!isOverlayActive) {
+      node.focus();
+    }
 
     const ta = node as unknown as {
       handleScroll: (event: unknown) => void;
@@ -376,19 +392,26 @@ export function App({
 
   const closeModelPicker = (): void => {
     setModelPickerOpen(false);
-    inputRef.current?.setText("");
     setInputText("");
     setInputScrollState({ lines: 1, scrollY: 0 });
+    queueMicrotask(() => {
+      inputRef.current?.setText("");
+      inputRef.current?.focus();
+    });
   };
 
   const closeUsagePanel = (): void => {
     setUsagePanelOpen(false);
-    inputRef.current?.setText("");
     setInputText("");
     setInputScrollState({ lines: 1, scrollY: 0 });
+    queueMicrotask(() => {
+      inputRef.current?.setText("");
+      inputRef.current?.focus();
+    });
   };
 
   const openUsagePanel = (): void => {
+    inputRef.current?.blur();
     setUsagePanelOpen(true);
     setUsageLoading(true);
     setUsageError(null);
@@ -413,6 +436,7 @@ export function App({
   };
 
   const openModelPicker = (): void => {
+    inputRef.current?.blur();
     setModelPickerOpen(true);
     setModelPickerLoading(true);
     setModelPickerModels([]);
@@ -465,12 +489,16 @@ export function App({
 
   const closeSessionPicker = (): void => {
     setSessionPickerOpen(false);
-    inputRef.current?.setText("");
     setInputText("");
     setInputScrollState({ lines: 1, scrollY: 0 });
+    queueMicrotask(() => {
+      inputRef.current?.setText("");
+      inputRef.current?.focus();
+    });
   };
 
   const openSessionPicker = (): void => {
+    inputRef.current?.blur();
     setSessionPickerOpen(true);
     setSessionPickerLoading(true);
     setSessionPickerSessions([]);
@@ -499,16 +527,91 @@ export function App({
     requestResume?.(picked.sessionId);
   };
 
+  const closeArtifactsPanel = (): void => {
+    setArtifactsPanelOpen(false);
+    setInputText("");
+    setInputScrollState({ lines: 1, scrollY: 0 });
+    queueMicrotask(() => {
+      inputRef.current?.setText("");
+      inputRef.current?.focus();
+    });
+  };
+
+  const openArtifactsPanel = (): void => {
+    inputRef.current?.blur();
+    setArtifactsPanelOpen(true);
+    setArtifactsSelectedIndex(0);
+  };
+
+  const openUrl = (url: string): void => {
+    const platform = process.platform;
+    const cmd = platform === "darwin" ? "open" : platform === "win32" ? "start" : "xdg-open";
+    try {
+      spawn(cmd, [url], { detached: true, stdio: "ignore" }).unref();
+    } catch {
+      // ignore
+    }
+  };
+
+  const handleCopyArtifactUrl = (url: string): void => {
+    if (renderer.copyToClipboardOSC52(url)) {
+      setCopiedVisible(true);
+      if (copiedTimerRef.current) clearTimeout(copiedTimerRef.current);
+      copiedTimerRef.current = setTimeout(() => setCopiedVisible(false), 1500);
+    }
+  };
+
+  const sessionArtifacts = useMemo<ArtifactItem[]>(() => {
+    const list: ArtifactItem[] = [];
+    const seen = new Set<string>();
+
+    const mdRegex = /\[([^\]]+)\]\((https:\/\/claude\.ai\/(?:code\/)?artifact\/[a-zA-Z0-9_-]+)\)/g;
+    const rawRegex = /https:\/\/claude\.ai\/(?:code\/)?artifact\/[a-zA-Z0-9_-]+/g;
+
+    for (const b of blocks) {
+      let content = "";
+      if (b.kind === "assistant" || b.kind === "host" || b.kind === "user") {
+        content = b.text;
+      } else if (b.kind === "tool") {
+        content = (b.resultText ?? "") + " " + JSON.stringify(b.input ?? "");
+      }
+
+      for (const match of content.matchAll(mdRegex)) {
+        const title = match[1];
+        const url = match[2];
+        if (url && !seen.has(url)) {
+          seen.add(url);
+          list.push({ title, url });
+        }
+      }
+
+      const rawMatches = content.match(rawRegex);
+      if (rawMatches) {
+        for (const url of rawMatches) {
+          if (!seen.has(url)) {
+            seen.add(url);
+            list.push({ url });
+          }
+        }
+      }
+    }
+    return list;
+  }, [blocks]);
+
   const closeMcpPanel = (): void => {
     mcpActionSeqRef.current++;
     setMcpPanelOpen(false);
     setMcpLoading(false);
-    inputRef.current?.setText("");
     setInputText("");
     setInputScrollState({ lines: 1, scrollY: 0 });
+    queueMicrotask(() => {
+      inputRef.current?.setText("");
+      inputRef.current?.focus();
+    });
   };
 
   const openMcpPanel = (): void => {
+    inputRef.current?.blur();
     setMcpPanelOpen(true);
     setMcpLoading(true);
     setMcpPanelView({ kind: "servers", selectedIdx: 0 });
@@ -771,7 +874,7 @@ export function App({
       return;
     }
 
-    if (!sessionPickerOpen && !modelPickerOpen && !usagePanelOpen && !mcpPanelOpen && !permissionRequest) {
+    if (!sessionPickerOpen && !modelPickerOpen && !usagePanelOpen && !mcpPanelOpen && !artifactsPanelOpen && !permissionRequest) {
       updateInputDimensions();
     }
 
@@ -921,6 +1024,27 @@ export function App({
       return;
     }
 
+    if (artifactsPanelOpen) {
+      const defaultUrl = "https://claude.ai/code/artifacts";
+      const selectedItem = sessionArtifacts[artifactsSelectedIndex];
+      const activeUrl = selectedItem?.url ?? defaultUrl;
+
+      if (sessionArtifacts.length > 0 && key.name === "up") {
+        setArtifactsSelectedIndex((i) => (i - 1 + sessionArtifacts.length) % sessionArtifacts.length);
+      } else if (sessionArtifacts.length > 0 && key.name === "down") {
+        setArtifactsSelectedIndex((i) => (i + 1) % sessionArtifacts.length);
+      } else if (key.name === "escape") {
+        closeArtifactsPanel();
+      } else if (key.name === "return" || key.name === "o") {
+        openUrl(activeUrl);
+      } else if (key.name === "c") {
+        handleCopyArtifactUrl(activeUrl);
+      } else if (key.name === "g") {
+        openUrl(defaultUrl);
+      }
+      return;
+    }
+
     if (usagePanelOpen) {
       if (key.name === "escape") closeUsagePanel();
       return;
@@ -988,7 +1112,7 @@ export function App({
     // alongside useKeyboard's "return" handler for confirmModelPick()/closeUsagePanel(), the same
     // double-firing hazard the suggestion box's comment above describes for the same underlying
     // reason (both subscribe to the same keypress). The overlay owns Enter entirely while it's open.
-    if (sessionPickerOpen || modelPickerOpen || usagePanelOpen || mcpPanelOpen) return;
+    if (sessionPickerOpen || modelPickerOpen || usagePanelOpen || mcpPanelOpen || artifactsPanelOpen) return;
     if (visibleSuggestions.length > 0) {
       acceptSuggestion(visibleSuggestions[selectedIndex]!);
       return;
@@ -1010,6 +1134,11 @@ export function App({
     if (!activePrompt && text === "/mcp") {
       setInputText("");
       openMcpPanel();
+      return;
+    }
+    if (!activePrompt && text === "/artifacts") {
+      setInputText("");
+      openArtifactsPanel();
       return;
     }
     if (!activePrompt && (text === "/resume" || text.startsWith("/resume "))) {
@@ -1179,6 +1308,16 @@ export function App({
                 }
               }
             }}
+          />
+        </box>
+      ) : artifactsPanelOpen ? (
+        <box style={{ flexShrink: 0 }}>
+          <ArtifactsPanel
+            artifacts={sessionArtifacts}
+            selectedIndex={artifactsSelectedIndex}
+            onOpen={openUrl}
+            onClose={closeArtifactsPanel}
+            onSelect={(idx) => setArtifactsSelectedIndex(idx)}
           />
         </box>
       ) : (
