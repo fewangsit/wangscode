@@ -54,17 +54,18 @@ function parseResumeFlag(argv: string[]): string | undefined {
 // between the two), so this stays correct for free instead of relying on the bundler to inline a
 // JSON import consistently across bun/tsdown/tsc. Also backs --update below, which re-reads this
 // same file after `npm install -g` overwrites it in place, to report what it actually landed on.
-function readPackageJson(): { name: string; version: string } {
+function readPackageJson(): { name: string; version: string; publishRegistry?: string } {
   const raw = readFileSync(path.join(PACKAGE_ROOT, "package.json"), "utf8");
-  return JSON.parse(raw) as { name: string; version: string };
+  return JSON.parse(raw) as { name: string; version: string; publishRegistry?: string };
 }
 
-// Resolves the target registry for self-update:
-// 1. Explicit --registry argument if passed to the command
+// Resolves the target registry for self-update, in priority order:
+// 1. Explicit --registry argument passed to the CLI
 // 2. WANGS_CODE_REGISTRY environment variable
-// 3. .npmrc registry setting (checked in PACKAGE_ROOT or cwd)
-// 4. Default Verdaccio registry at http://192.168.1.102:4873/
-function getTargetRegistry(argv: string[]): string {
+// 3. .npmrc registry= line (checked in PACKAGE_ROOT, then cwd)
+// 4. "publishRegistry" field embedded in package.json (set at publish time — always correct)
+// 5. Bare npm default (falls through to npmjs.org if none of the above match)
+function getTargetRegistry(argv: string[]): string | undefined {
   const regIdx = argv.indexOf("--registry");
   if (regIdx !== -1 && argv[regIdx + 1]) {
     return argv[regIdx + 1]!;
@@ -84,16 +85,22 @@ function getTargetRegistry(argv: string[]): string {
       // Ignore read errors
     }
   }
-  return "http://192.168.1.102:4873/";
+  // Fall back to the registry URL baked into the package at publish time.
+  // This is the most robust option for users who installed via `npm install -g --registry <url>`
+  // without persisting that URL to .npmrc — the correct registry travels with the package.
+  return readPackageJson().publishRegistry;
 }
 
 function selfUpdate(argv: string[]): void {
   const pkg = readPackageJson();
   const registry = getTargetRegistry(argv);
-  console.log(`Updating ${pkg.name} (currently ${pkg.version}) from ${registry}...\n`);
+  console.log(`Updating ${pkg.name} (currently ${pkg.version}) from ${registry ?? "npm default registry"}...\n`);
+
+  const npmArgs = ["install", "-g", `${pkg.name}@latest`];
+  if (registry) npmArgs.push("--registry", registry);
 
   try {
-    execFileSync("npm", ["install", "-g", `${pkg.name}@latest`, "--registry", registry], { stdio: "inherit" });
+    execFileSync("npm", npmArgs, { stdio: "inherit" });
   } catch (err) {
     console.error(`\nUpdate failed: ${err instanceof Error ? err.message : String(err)}`);
     process.exitCode = 1;
