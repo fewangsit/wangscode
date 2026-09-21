@@ -3,15 +3,6 @@ import { useSyncExternalStore } from "react";
 import type { SessionStatusStore } from "./session-status.ts";
 import { CARD_BORDER, GOLD, LOGO_PATH } from "./theme.ts";
 
-export function StatCard({ label, value }: { label: string; value: string }): React.ReactNode {
-  return (
-    <box style={{ border: true, borderStyle: "rounded", borderColor: CARD_BORDER, flexGrow: 1, flexDirection: "column", paddingX: 1 }}>
-      <text content={label} style={{ fg: GOLD }} />
-      <text content={value} style={{ fg: "#c0caf5" }} />
-    </box>
-  );
-}
-
 function CommandCard({ cmd, desc, onClick }: { cmd: string; desc: string; onClick: (cmd: string) => void }): React.ReactNode {
   return (
     <box
@@ -36,18 +27,16 @@ const BANNER_COMMANDS: { cmd: string; desc: string }[] = [
 
 export function WelcomeBanner({
   sessionStatus,
-  gitBranch,
   version,
   sessionStoreActive,
   onCommandClick,
 }: {
   sessionStatus: SessionStatusStore;
-  gitBranch: string | null;
   version: string;
   sessionStoreActive: boolean;
   onCommandClick: (cmd: string) => void;
 }): React.ReactNode {
-  const { cwd, model, sessionId } = useSyncExternalStore(sessionStatus.store.subscribe, sessionStatus.store.get);
+  const { model } = useSyncExternalStore(sessionStatus.store.subscribe, sessionStatus.store.get);
   const firstRow = BANNER_COMMANDS.slice(0, 3);
   const secondRow = BANNER_COMMANDS.slice(3);
 
@@ -62,12 +51,16 @@ export function WelcomeBanner({
           corners as closely as terminal box-drawing characters can. */}
       <box style={{ border: true, borderStyle: "rounded", borderColor: GOLD, flexDirection: "column", paddingX: 2, paddingY: 1, marginBottom: 1 }}>
         <box style={{ flexDirection: "row", alignItems: "center" }}>
-          <box style={{ border: true, borderStyle: "rounded", borderColor: GOLD, paddingX: 1 }}>
+          <box style={{ border: true, borderStyle: "rounded", borderColor: GOLD, flexShrink: 0, paddingX: 0, paddingY: 0 }}>
             {/* Forced to "blocks" (the universal colored half-block fallback, not a terminal-specific
                 graphics protocol) rather than "auto" — confirmed the logo renders as a clean, correct
                 architecture-glyph shape this way; "auto" can pick kitty/sixel depending on the
-                terminal, and a real run showed those coming out distorted where "blocks" did not. */}
-            <image source={LOGO_PATH} protocol="blocks" fit="fit" style={{ width: 14, height: 7 }} />
+                terminal, and a real run showed those coming out distorted where "blocks" did not.
+                The source PNG is a square 512x512 — height is set to half the width, not equal,
+                because each "blocks" character cell stacks 2 vertical pixels (▀/▄) into 1 row but
+                only 1 pixel per column, so a terminal cell itself is roughly twice as tall as it is
+                wide; height:width 1:2 is what actually renders as a visual square, not 1:1. */}
+            <image source={LOGO_PATH} protocol="blocks" fit="fit" style={{ width: 16, height: 8 }} />
           </box>
           <box style={{ flexDirection: "column", marginLeft: 2, flexGrow: 1 }}>
             <box style={{ flexDirection: "row", alignItems: "center" }}>
@@ -91,12 +84,6 @@ export function WelcomeBanner({
             </box>
           </box>
         </box>
-      </box>
-
-      <box style={{ flexDirection: "row", marginBottom: 1 }}>
-        <StatCard label="WORKSPACE ROOT" value={cwd ?? "(unknown)"} />
-        <StatCard label="GIT BRANCH" value={gitBranch ?? "(not a git repo)"} />
-        <StatCard label="SESSION" value={sessionId ? sessionId.slice(0, 8) : "(connecting...)"} />
       </box>
 
       <box style={{ flexDirection: "row", marginBottom: 1 }}>

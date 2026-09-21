@@ -36,8 +36,6 @@ export interface AppProps {
   /** Escape stops/interrupts the running turn — see repl.tsx, which wires this to the live session's `interrupt()`. */
   onInterrupt: () => void;
   cwd: string;
-  /** Computed once at startup (see repl.tsx) — `null` outside a git repo or before the first commit. */
-  gitBranch: string | null;
   /** The package's own version (from package.json) — shown in the welcome banner's version badge. */
   version: string;
   /** Whether Postgres session mirroring is configured (WANGS_CODE_POSTGRES_URL set) — shown in the welcome banner in place of the design reference's fictional "Memory Daemon" line. */
@@ -53,7 +51,6 @@ export function App({
   onExit,
   onInterrupt,
   cwd,
-  gitBranch,
   version,
   sessionStoreActive,
   getSession,
@@ -393,13 +390,7 @@ export function App({
     <box style={{ flexDirection: "column", width: "100%", height: "100%" }}>
       <scrollbox style={{ flexGrow: 1 }} stickyScroll stickyStart="bottom" focused={false} scrollAcceleration={scrollAcceleration}>
         {blocks.some((b) => b.kind === "welcome") ? (
-          <WelcomeBanner
-            sessionStatus={sessionStatus}
-            gitBranch={gitBranch}
-            version={version}
-            sessionStoreActive={sessionStoreActive}
-            onCommandClick={insertCommand}
-          />
+          <WelcomeBanner sessionStatus={sessionStatus} version={version} sessionStoreActive={sessionStoreActive} onCommandClick={insertCommand} />
         ) : null}
         {blocks.filter((b) => b.kind !== "welcome").map((block) => renderBlock(block, syntaxStyle))}
       </scrollbox>

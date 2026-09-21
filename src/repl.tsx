@@ -1,4 +1,3 @@
-import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 
@@ -24,20 +23,6 @@ import { PACKAGE_ROOT } from "./package-root.ts";
 
 export interface ReplParams {
   cwd: string;
-}
-
-// Computed once at startup, not per-render — real, not decorative: the welcome banner's
-// workspace-status grid shows it alongside cwd/model. `null` (not thrown) for anything that isn't
-// a git repo, or has no commits yet (no branch to name).
-function getGitBranch(cwd: string): string | null {
-  try {
-    const branch = execFileSync("git", ["rev-parse", "--abbrev-ref", "HEAD"], { cwd, stdio: ["ignore", "pipe", "ignore"] })
-      .toString()
-      .trim();
-    return branch.length > 0 && branch !== "HEAD" ? branch : null;
-  } catch {
-    return null;
-  }
 }
 
 // Same file cli.ts's own readPackageJson() reads (see that file's comment on why PACKAGE_ROOT,
@@ -184,7 +169,6 @@ export async function runRepl(params: ReplParams): Promise<void> {
       onExit={() => void shutdown()}
       onInterrupt={onInterrupt}
       cwd={params.cwd}
-      gitBranch={getGitBranch(params.cwd)}
       version={getPackageVersion()}
       sessionStoreActive={sessionStoreHandle !== null}
       getSession={() => currentSession}
