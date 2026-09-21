@@ -1,5 +1,5 @@
 import { listSessions } from "@anthropic-ai/claude-agent-sdk";
-import type { Query, SessionStore } from "@anthropic-ai/claude-agent-sdk";
+import type { McpServerStatus, Query, SessionStore } from "@anthropic-ai/claude-agent-sdk";
 
 import type { ChatStore } from "./tui/chat-store.ts";
 import type { SessionStatusStore } from "./tui/session-status.ts";
@@ -22,6 +22,7 @@ export type CommandHandler = (ctx: CommandContext, arg?: string) => Promise<void
 // They stay listed in HOST_COMMANDS below for "/"-mention autocomplete's benefit.
 const COMMANDS: Record<string, CommandHandler> = {
   "/resume": handleResume,
+  "/mcp": handleMcp,
 };
 
 export interface CommandDescriptor {
@@ -34,6 +35,7 @@ export const HOST_COMMANDS: CommandDescriptor[] = [
   { name: "/usage", description: "Token and cost totals for this session" },
   { name: "/model", description: "Switch the active model" },
   { name: "/resume", description: "Pick a previous session to resume" },
+  { name: "/mcp", description: "List MCP servers and tools · /mcp <name> · /mcp reconnect <name>" },
   { name: "/create-feature", description: "Run the deterministic feature-build pipeline" },
   { name: "/exit", description: "Quit Wangs Code" },
 ];
@@ -94,4 +96,122 @@ export async function handleResume(ctx: CommandContext, arg?: string): Promise<v
 
   ctx.chatStore.pushHost(`Resuming session ${picked.sessionId}...`);
   ctx.requestResume(picked.sessionId);
+}
+
+// ── /mcp helpers ──────────────────────────────────────────────────────────────────────────────────
+
+function statusGlyph(status: McpServerStatus["status"]): string {
+  switch (status) {
+    case "connected":
+      return "✓";
+    case "failed":
+      return "✗";
+    case "pending":
+      return "◌";
+    case "disabled":
+      return "—";
+    case "needs-auth":
+      return "🔒";
+  }
+}
+
+function formatMcpList(servers: McpServerStatus[]): string {
+  if (servers.length === 0) {
+    return "## MCP Servers\n\nNo MCP servers configured for this session.";
+  }
+
+  const rows = servers.map((s) => {
+    const glyph = statusGlyph(s.status);
+    const toolCount = s.tools?.length ?? 0;
+    const toolNote = s.status === "connected" ? ` · ${toolCount} tool${toolCount !== 1 ? "s" : ""}` : "";
+    const errorNote = s.error ? `  \n  _${s.error}_` : "";
+    return `**${glyph} ${s.name}** — ${s.status}${toolNote}${errorNote}`;
+  });
+
+  const lines = [`## MCP Servers (${servers.length})`, "", ...rows, "", "_/mcp \\<name\\> — show tools · /mcp reconnect \\<name\\> — reconnect_"];
+  return lines.join("\n");
+}
+
+function formatMcpServer(server: McpServerStatus): string {
+  const glyph = statusGlyph(server.status);
+  const tools = server.tools ?? [];
+  const header = `## ${glyph} ${server.name} — ${server.status}`;
+
+  if (server.error) {
+    return [header, "", `**Error:** ${server.error}`, "", "_/mcp reconnect \\<name\\> to retry the connection._"].join("\n");
+  }
+
+  if (tools.length === 0) {
+    return [header, "", "_No tools reported by this server._"].join("\n");
+  }
+
+  const toolLines = tools.map((t) => {
+    const annotations: string[] = [];
+    if (t.annotations?.readOnly) annotations.push("read-only");
+    if (t.annotations?.destructive) annotations.push("destructive");
+    if (t.annotations?.openWorld) annotations.push("open-world");
+    const annotNote = annotations.length > 0 ? ` _(${annotations.join(", ")})_` : "";
+    const desc = t.description ? ` — ${t.description}` : "";
+    return `- **${t.name}**${desc}${annotNote}`;
+  });
+
+  return [header, `_${tools.length} tool${tools.length !== 1 ? "s" : ""}_`, "", ...toolLines].join("\n");
+}
+
+/** `/mcp [subcommand] [arg]`
+ *
+ *  - `/mcp`              — list all configured MCP servers with status
+ *  - `/mcp <name>`       — show the tool list for a specific server
+ *  - `/mcp reconnect <name>` — reconnect a failed/pending server
+ */
+export async function handleMcp(ctx: CommandContext, arg?: string): Promise<void> {
+  const session = ctx.getSession();
+  const trimmed = arg?.trim() ?? "";
+
+  // /mcp reconnect <name>
+  if (trimmed.startsWith("reconnect ")) {
+    const serverName = trimmed.slice("reconnect ".length).trim();
+    if (!serverName) {
+      ctx.chatStore.pushHost("Usage: `/mcp reconnect <server-name>`");
+      return;
+    }
+    ctx.chatStore.pushHost(`Reconnecting **${serverName}**…`);
+    try {
+      await session.reconnectMcpServer(serverName);
+      const updated = await session.mcpServerStatus();
+      const server = updated.find((s) => s.name === serverName);
+      if (server) {
+        ctx.chatStore.pushHost(formatMcpServer(server));
+      } else {
+        ctx.chatStore.pushHost(`Reconnected **${serverName}** — server no longer in status list.`);
+      }
+    } catch (err) {
+      ctx.chatStore.pushHost(`Failed to reconnect **${serverName}**: ${err instanceof Error ? err.message : String(err)}`);
+    }
+    return;
+  }
+
+  // Fetch server list for both remaining subcommands.
+  let servers: McpServerStatus[];
+  try {
+    servers = await session.mcpServerStatus();
+  } catch (err) {
+    ctx.chatStore.pushHost(`Could not fetch MCP status: ${err instanceof Error ? err.message : String(err)}`);
+    return;
+  }
+
+  // /mcp <name> — drill into one server
+  if (trimmed.length > 0) {
+    const server = servers.find((s) => s.name === trimmed);
+    if (!server) {
+      const names = servers.map((s) => `\`${s.name}\``).join(", ");
+      ctx.chatStore.pushHost(`No MCP server named **${trimmed}**.${names.length > 0 ? ` Known servers: ${names}` : ""}`);
+      return;
+    }
+    ctx.chatStore.pushHost(formatMcpServer(server));
+    return;
+  }
+
+  // /mcp — list all
+  ctx.chatStore.pushHost(formatMcpList(servers));
 }
