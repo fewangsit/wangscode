@@ -76,7 +76,9 @@ export function App({
   // than smooth. MacOSScrollAccel ramps up for quick successive ticks and stays precise for slow
   // ones; memoized once so its own internal velocity-history state persists across scroll events
   // instead of resetting on every render.
-  const scrollAcceleration = useMemo(() => new MacOSScrollAccel(), []);
+  //   tau: lowered from default so the ramp-up kicks in earlier on a fast swipe
+  //   maxMultiplier: raised so a sustained flick gesture actually scrolls far enough to feel fluid
+  const scrollAcceleration = useMemo(() => new MacOSScrollAccel({ tau: 80, maxMultiplier: 8 }), []);
   const renderer = useRenderer();
 
   const [copiedVisible, setCopiedVisible] = useState(false);
