@@ -18,7 +18,7 @@ export function detectPackageScope(repoRoot: string): string {
   }
   throw new Error(
     `Could not detect this project's package scope from packages/infrastructure/package.json under ${repoRoot}. ` +
-      "wangs-agent's feature-build pipeline expects the Wangs Foundation convention (packages/core, packages/infrastructure, " +
+      "Wangs Code's feature-build pipeline expects the Wangs Foundation convention (packages/core, packages/infrastructure, " +
       "packages/features/*, all published under one @scope) — run it from the root of a project that follows " +
       "that layout, or see the README for how to adapt it.",
   );

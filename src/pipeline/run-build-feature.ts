@@ -6,7 +6,7 @@
 //
 // This used to be a CLI (`agentic-feature-loop build-feature`) with its own
 // process, printing JSON to stdout and calling process.exit() at every stop
-// point. Merged directly into wangs-agent so there is one source instead of
+// point. Merged directly into wangs-code so there is one source instead of
 // a subprocess boundary — every process.exit() below became a return value
 // instead; the phase/gate/retry logic itself is unchanged.
 import path from "node:path";

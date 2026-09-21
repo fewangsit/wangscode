@@ -48,9 +48,9 @@ export function buildSessionOptions(
     mcpServers: {
       "wangs-feature-build": createFeatureBuildMcpServer(featureBuildController),
     },
-    // Project-specific skills bundled inside wangs-agent itself (see
+    // Project-specific skills bundled inside wangs-code itself (see
     // wangs-plugin/) — a consumer repo needs zero .claude/skills config for
-    // these; updating wangs-agent updates the skill content.
+    // these; updating wangs-code updates the skill content.
     plugins: [{ type: "local", path: WANGS_PLUGIN_ROOT }],
     // Subagents defined programmatically (Options.agents, confirmed real in
     // sdk.d.ts) instead of .claude/agents/*.md files a consumer repo would

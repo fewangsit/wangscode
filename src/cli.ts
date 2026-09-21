@@ -13,15 +13,15 @@ import path from "node:path";
 import { runRepl } from "./repl.tsx";
 import { PACKAGE_ROOT } from "./package-root.ts";
 
-const HELP = `wangs-agent — standalone interactive chat CLI for Wangs Foundation projects
+const HELP = `Wangs Code — standalone interactive chat CLI for Wangs Foundation projects
 
 Requires Bun (https://bun.sh) — the terminal UI's native binding only runs under Bun's runtime.
 
 Usage:
-  wangs-agent [--project=<path>]
-  wangs-agent --update | -u
-  wangs-agent --version | -v
-  wangs-agent --help | -h
+  wangs-code [--project=<path>]
+  wangs-code --update | -u
+  wangs-code --version | -v
+  wangs-code --help | -h
 
 Starts an interactive chat session in the terminal. Behaves like a general
 coding assistant; type /create-feature to run the deterministic, gated
@@ -49,7 +49,7 @@ function readPackageJson(): { name: string; version: string } {
 
 // Shells out to the same `npm install -g <pkg>@latest` a user would run by hand — deliberately not
 // hardcoding a registry URL (e.g. the local Verdaccio one this project happens to publish to
-// during development) so this keeps working unchanged once wangs-agent moves to a real registry;
+// during development) so this keeps working unchanged once wangs-code moves to a real registry;
 // npm already resolves whatever registry the user has configured. `stdio: "inherit"` streams npm's
 // own real progress/output straight through rather than re-implementing it.
 function selfUpdate(): void {
@@ -93,7 +93,7 @@ async function main(): Promise<void> {
   // node, ignoring the shebang). Fails with a clear message instead of the terminal UI's own
   // cryptic native-FFI stack trace.
   if (typeof (globalThis as { Bun?: unknown }).Bun === "undefined") {
-    console.error("wangs-agent requires Bun (https://bun.sh) — run it with `bun wangs-agent` or `bunx wangs-agent`, not `node`.");
+    console.error("wangs-code requires Bun (https://bun.sh) — run it with `bun wangs-code` or `bunx wangs-code`, not `node`.");
     process.exit(1);
   }
 

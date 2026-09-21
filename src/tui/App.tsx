@@ -1,6 +1,15 @@
+import path from "node:path";
+
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { useKeyboard, useRenderer, useSelectionHandler } from "@opentui/react";
-import { defaultTextareaKeyBindings, type KeyBinding, type Renderable, type SyntaxStyle, type TextareaRenderable } from "@opentui/core";
+import {
+  defaultTextareaKeyBindings,
+  MacOSScrollAccel,
+  type KeyBinding,
+  type Renderable,
+  type SyntaxStyle,
+  type TextareaRenderable,
+} from "@opentui/core";
 import type { EffortLevel, ModelInfo, Query, SDKControlGetUsageResponse } from "@anthropic-ai/claude-agent-sdk";
 
 import type { ChatBlock } from "./chat-store.ts";
@@ -11,6 +20,9 @@ import { detectActiveFragment } from "./autocomplete.ts";
 import { listFileMentions } from "./file-mentions.ts";
 import { listAvailableCommands, type CommandDescriptor } from "../command-registry.ts";
 import { createAppSyntaxStyle } from "./syntax-theme.ts";
+import { PACKAGE_ROOT } from "../package-root.ts";
+
+const LOGO_PATH = path.join(PACKAGE_ROOT, "assets", "wangs-logo.png");
 
 // Gold/amber accent, not blue — the whole palette used to lean on a blue accent (#7aa2f7);
 // everywhere that used it now reads GOLD instead.
@@ -67,10 +79,19 @@ interface Suggestion {
 function WelcomeBanner({ sessionStatus }: { sessionStatus: SessionStatusStore }): React.ReactNode {
   const { cwd, model } = useSyncExternalStore(sessionStatus.store.subscribe, sessionStatus.store.get);
   return (
-    <box style={{ flexDirection: "column", marginBottom: 1 }}>
-      <ascii-font text="wangs-agent" font="tiny" color={GOLD} />
-      <text content="Standalone coding assistant for Wangs Foundation projects." style={{ fg: "#565f89" }} />
-      <text content={`cwd: ${cwd ?? "(unknown)"}`} style={{ fg: "#565f89" }} />
+    <box style={{ border: true, borderColor: GOLD, flexDirection: "column", paddingX: 2, paddingY: 1, marginBottom: 1 }}>
+      <box style={{ flexDirection: "row", alignItems: "center" }}>
+        {/* Forced to "blocks" (the universal colored half-block fallback, not a terminal-specific
+            graphics protocol) rather than "auto" — confirmed the logo renders as a clean, correct
+            crown shape this way; "auto" can pick kitty/sixel depending on the terminal, and a real
+            run showed those coming out distorted where "blocks" did not. */}
+        <image source={LOGO_PATH} protocol="blocks" fit="fit" style={{ width: 16, height: 8 }} />
+        <box style={{ flexDirection: "column", marginLeft: 2 }}>
+          <ascii-font text="Wangs Code" font="tiny" color={GOLD} />
+          <text content="Standalone coding assistant for Wangs Foundation projects." style={{ fg: "#565f89" }} />
+        </box>
+      </box>
+      <text content={`cwd: ${cwd ?? "(unknown)"}`} style={{ fg: "#565f89", marginTop: 1 }} />
       <text content={`model: ${model ?? "(connecting...)"}`} style={{ fg: "#565f89" }} />
       <text content="/create-feature — deterministic feature-build pipeline" style={{ fg: "#565f89", marginTop: 1 }} />
       <text content="/usage — token/cost totals   /model — switch model   /resume — pick a past session   /exit — quit" style={{ fg: "#565f89" }} />
@@ -92,6 +113,27 @@ function ToolCallRow({ block, syntaxStyle }: { block: Extract<ChatBlock, { kind:
   );
 }
 
+const THINKING_FRAMES = ["💭   ", "💭 . ", "💭 ..", "💭..."];
+const THINKING_FRAME_MS = 350;
+
+/** While a thinking block has no text yet (the model hasn't emitted a delta), there's nothing to
+ *  show but the icon sitting there motionless — cycles a small dot animation instead, so it reads
+ *  as "actively thinking" rather than possibly stalled. Stops the moment real text starts arriving
+ *  (the streaming text itself is motion enough at that point). */
+function ThinkingRow({ block }: { block: Extract<ChatBlock, { kind: "thinking" }> }): React.ReactNode {
+  const [frame, setFrame] = useState(0);
+  const hasText = block.text.length > 0;
+
+  useEffect(() => {
+    if (hasText) return;
+    const id = setInterval(() => setFrame((f) => (f + 1) % THINKING_FRAMES.length), THINKING_FRAME_MS);
+    return () => clearInterval(id);
+  }, [hasText]);
+
+  const content = hasText ? `💭 ${block.text}` : THINKING_FRAMES[frame];
+  return <text content={content} style={{ fg: "#565f89", marginBottom: block.streaming ? 0 : 1 }} />;
+}
+
 function renderBlock(block: ChatBlock, syntaxStyle: SyntaxStyle, sessionStatus: SessionStatusStore): React.ReactNode {
   switch (block.kind) {
     case "welcome":
@@ -109,7 +151,7 @@ function renderBlock(block: ChatBlock, syntaxStyle: SyntaxStyle, sessionStatus: 
         />
       );
     case "thinking":
-      return <text key={block.id} content={`💭 ${block.text}`} style={{ fg: "#565f89", marginBottom: block.streaming ? 0 : 1 }} />;
+      return <ThinkingRow key={block.id} block={block} />;
     case "tool":
       return <ToolCallRow key={block.id} block={block} syntaxStyle={syntaxStyle} />;
     case "host":
@@ -296,6 +338,12 @@ export function App({ chatStore, sessionStatus, inputRouter, onExit, onInterrupt
   const activePrompt = useSyncExternalStore(inputRouter.promptStore.subscribe, inputRouter.promptStore.get);
   const inputRef = useRef<TextareaRenderable>(null);
   const syntaxStyle = useMemo(() => createAppSyntaxStyle(), []);
+  // The default scroll behavior has no acceleration curve at all — every wheel tick moves the
+  // same fixed amount regardless of how fast the gesture is, which reads as stepped/jerky rather
+  // than smooth. MacOSScrollAccel ramps up for quick successive ticks and stays precise for slow
+  // ones; memoized once so its own internal velocity-history state persists across scroll events
+  // instead of resetting on every render.
+  const scrollAcceleration = useMemo(() => new MacOSScrollAccel(), []);
   const renderer = useRenderer();
 
   const [copiedVisible, setCopiedVisible] = useState(false);
@@ -610,10 +658,9 @@ export function App({ chatStore, sessionStatus, inputRouter, onExit, onInterrupt
 
   return (
     <box style={{ flexDirection: "column", width: "100%", height: "100%" }}>
-      <scrollbox style={{ flexGrow: 1 }} stickyScroll stickyStart="bottom" focused={false}>
+      <scrollbox style={{ flexGrow: 1 }} stickyScroll stickyStart="bottom" focused={false} scrollAcceleration={scrollAcceleration}>
         {blocks.map((block) => renderBlock(block, syntaxStyle, sessionStatus))}
       </scrollbox>
-      <StatusBar sessionStatus={sessionStatus} />
       <SuggestionBox suggestions={visibleSuggestions} selectedIndex={selectedIndex} />
       <box style={{ border: ["top", "bottom"], height: 3, flexShrink: 0 }} title={activePrompt ?? undefined}>
         <textarea
@@ -625,6 +672,7 @@ export function App({ chatStore, sessionStatus, inputRouter, onExit, onInterrupt
           focused
         />
       </box>
+      <StatusBar sessionStatus={sessionStatus} />
       {modelPickerOpen || usagePanelOpen ? (
         // Absolutely positioned on top of the whole column, at a higher zIndex — this covers the
         // chat visually (matching Claude Code's own /model and /usage taking over the screen)

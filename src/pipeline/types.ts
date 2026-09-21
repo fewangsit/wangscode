@@ -1,5 +1,5 @@
 // Types for the feature-build pipeline. Originally agentic-feature-loop's
-// own package; merged directly into wangs-agent so there is one source, one
+// own package; merged directly into wangs-code so there is one source, one
 // process, no subprocess boundary. This file has no behavior of its own,
 // only the shapes shared across the other pipeline modules.
 
@@ -144,7 +144,7 @@ export interface FeatureBuildResult {
 }
 
 export interface PipelineContext {
-  /** The TARGET project's root — never wangs-agent's own install location. */
+  /** The TARGET project's root — never wangs-code's own install location. */
   repoRoot: string;
   /** The target project's own npm scope (e.g. "@wangs-foundation"), detected at startup. */
   scope: string;

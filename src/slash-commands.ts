@@ -130,7 +130,7 @@ export class FeatureBuildController {
     const trimmed = line.trim();
 
     if (this.busy) {
-      print("[wangs-agent] Feature-build sedang berjalan, tunggu sampai selesai atau butuh jawaban.");
+      print("[Wangs Code] Feature-build sedang berjalan, tunggu sampai selesai atau butuh jawaban.");
       return true;
     }
 

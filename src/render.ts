@@ -97,7 +97,7 @@ export function createMessageRenderer(chatStore: ChatStore, sessionStatus: Sessi
     }
 
     if (message.type === "system" && message.subtype === "mirror_error") {
-      chatStore.pushFooter("[wangs-agent] session mirror write failed — local transcript is still intact");
+      chatStore.pushFooter("[Wangs Code] session mirror write failed — local transcript is still intact");
       return;
     }
 

@@ -37,7 +37,7 @@ export const HOST_COMMANDS: CommandDescriptor[] = [
   { name: "/model", description: "Switch the active model" },
   { name: "/resume", description: "Pick a previous session to resume" },
   { name: "/create-feature", description: "Run the deterministic feature-build pipeline" },
-  { name: "/exit", description: "Quit wangs-agent" },
+  { name: "/exit", description: "Quit Wangs Code" },
 ];
 
 /** Merges HOST_COMMANDS with `session.supportedCommands()` (skill/plugin commands included) for autocomplete display — a name already in HOST_COMMANDS wins dispatch, so it's not duplicated here even if the SDK also reports one under the same name. */

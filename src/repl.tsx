@@ -25,7 +25,7 @@ export interface ReplParams {
 // Pool and the SDK's `sessionStore` option) when the env var is unset, so anyone who just wants to
 // chat is unaffected. `ensureSchema()` runs once here, not per-query.
 async function createOptionalSessionStore(): Promise<{ store: PostgresSessionStore; pool: Pool } | null> {
-  const url = process.env.WANGS_AGENT_POSTGRES_URL;
+  const url = process.env.WANGS_CODE_POSTGRES_URL;
   if (!url) return null;
 
   const pool = new Pool({ connectionString: url });
@@ -49,7 +49,7 @@ export async function runRepl(params: ReplParams): Promise<void> {
   const sessionStoreHandle = await createOptionalSessionStore();
 
   chatStore.pushWelcome();
-  if (sessionStoreHandle) chatStore.pushFooter("[wangs-agent] session mirroring to Postgres enabled");
+  if (sessionStoreHandle) chatStore.pushFooter("[Wangs Code] session mirroring to Postgres enabled");
 
   // `resume` (an SDK `Options` field) is only consumable at `query()` call time — there's no
   // "resume this live session" method — so /resume can't just call something on `currentSession`.
@@ -115,11 +115,27 @@ export async function runRepl(params: ReplParams): Promise<void> {
     if (closing) return;
     closing = true;
     chatStore.flushAll();
+    const sessionId = sessionStatus.store.get().sessionId;
     await currentSession?.interrupt().catch(() => undefined);
     inputQueue.close();
     if (sessionStoreHandle) await sessionStoreHandle.pool.end().catch(() => undefined);
     root.unmount();
     renderer.destroy();
+    // Printed after renderer.destroy() (back on the normal terminal, not the TUI's alt-screen) so
+    // it's the last thing visible, not something the TUI clears away on its own exit.
+    if (sessionId) {
+      console.log(
+        [
+          "",
+          "─".repeat(60),
+          " Session ended. Resume it anytime:",
+          "   wangs-code   →   /resume",
+          ` Session ID: ${sessionId}`,
+          "─".repeat(60),
+          "",
+        ].join("\n"),
+      );
+    }
     process.exit(0);
   };
 
@@ -165,7 +181,7 @@ export async function runRepl(params: ReplParams): Promise<void> {
       // A resume-triggered queue close() legitimately unwinds this loop — only a genuine error
       // (no resume pending) is worth surfacing.
       if (pendingResumeId === undefined) {
-        chatStore.pushFooter(`[wangs-agent] session error: ${err instanceof Error ? err.message : String(err)}`);
+        chatStore.pushFooter(`[Wangs Code] session error: ${err instanceof Error ? err.message : String(err)}`);
       }
     }
 
