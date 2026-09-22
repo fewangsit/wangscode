@@ -191,3 +191,89 @@ export function formatToolCall(rawName: string, input: unknown, isSkill = false)
     rawJson: input !== null && input !== undefined ? String(input) : undefined,
   };
 }
+
+/**
+ * Checks if a string is a valid JSON object or array.
+ */
+export function isJsonString(str: string): boolean {
+  if (!str) return false;
+  const trimmed = str.trim();
+  if ((trimmed.startsWith("{") && trimmed.endsWith("}")) || (trimmed.startsWith("[") && trimmed.endsWith("]"))) {
+    try {
+      const parsed = JSON.parse(trimmed);
+      return typeof parsed === "object" && parsed !== null;
+    } catch {
+      return false;
+    }
+  }
+  return false;
+}
+
+/**
+ * Creates a clean, concise single-line summary of a JSON object or array for collapsed preview.
+ * e.g. `{ container: {…}, batch: [1] }` or `[ 3 items ]`
+ */
+export function summarizeJson(val: unknown, maxLen = 60): string {
+  if (val === null) return "null";
+  if (typeof val !== "object") return String(val);
+
+  if (Array.isArray(val)) {
+    return `[${val.length} item${val.length === 1 ? "" : "s"}]`;
+  }
+
+  const entries = Object.entries(val as Record<string, unknown>);
+  if (entries.length === 0) return "{}";
+
+  const parts: string[] = [];
+  for (const [k, v] of entries) {
+    if (v === null) {
+      parts.push(`${k}: null`);
+    } else if (Array.isArray(v)) {
+      parts.push(`${k}: [${v.length}]`);
+    } else if (typeof v === "object") {
+      parts.push(`${k}: {…}`);
+    } else if (typeof v === "string") {
+      const truncated = v.length > 20 ? `${v.slice(0, 18)}…` : v;
+      parts.push(`${k}: "${truncated}"`);
+    } else {
+      parts.push(`${k}: ${v}`);
+    }
+  }
+
+  const joined = `{ ${parts.join(", ")} }`;
+  if (joined.length <= maxLen) return joined;
+
+  // Truncate parts if too long
+  const shortParts: string[] = [];
+  let len = 4; // "{  }"
+  for (const p of parts) {
+    if (len + p.length + 2 > maxLen) {
+      const remaining = entries.length - shortParts.length;
+      shortParts.push(`+${remaining} more`);
+      break;
+    }
+    shortParts.push(p);
+    len += p.length + 2;
+  }
+  return `{ ${shortParts.join(", ")} }`;
+}
+
+/**
+ * Creates a concise summary for an individual node in the tree viewer.
+ * e.g. `{ container, batch }` or `{ 5 keys }` or `[ 2 items ]`
+ */
+export function getNodeSummary(val: unknown): string {
+  if (val === null) return "null";
+  if (Array.isArray(val)) {
+    return `[ ${val.length} ${val.length === 1 ? "item" : "items"} ]`;
+  }
+  if (typeof val === "object") {
+    const keys = Object.keys(val as Record<string, unknown>);
+    if (keys.length === 0) return "{ }";
+    if (keys.length <= 3) {
+      return `{ ${keys.join(", ")} }`;
+    }
+    return `{ ${keys.length} keys }`;
+  }
+  return String(val);
+}

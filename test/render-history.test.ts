@@ -143,6 +143,7 @@ describe("convertSessionMessagesToBlocks", () => {
     expect(currentBlocks.length).toBe(2);
     expect(currentBlocks[0]).toMatchObject({ kind: "user", text: "hello" });
     expect(currentBlocks[1]).toMatchObject({ kind: "assistant", text: "world" });
+    expect(chatStore.resumeEvent.get()).toBe(1);
 
     // Ensure nextId continues properly
     chatStore.pushHost("Resumed session.");

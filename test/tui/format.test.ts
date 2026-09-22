@@ -1,6 +1,4 @@
-import { describe, expect, test } from "bun:test";
-
-import { capitalize, formatToolCall, formatToolLabel, parseToolName, shortenPath } from "../../src/tui/format.ts";
+import { capitalize, formatToolCall, formatToolLabel, isJsonString, parseToolName, shortenPath, summarizeJson } from "../../src/tui/format.ts";
 
 describe("format utilities", () => {
   describe("capitalize", () => {
@@ -167,6 +165,58 @@ describe("format utilities", () => {
       const complex = formatToolCall("CustomTool", { nested: { array: [1, 2, 3] } });
       expect(complex.headline).toBe("CustomTool");
       expect(complex.rawJson).toContain('"nested"');
+    });
+  });
+
+  describe("isJsonString", () => {
+    test("detects valid json objects and arrays", () => {
+      expect(isJsonString('{"acks":[{"verdict":"allow"}]}')).toBe(true);
+      expect(isJsonString('["item1", "item2"]')).toBe(true);
+      expect(isJsonString('  { "key": 123 }  ')).toBe(true);
+    });
+
+    test("rejects invalid or non-object json", () => {
+      expect(isJsonString("")).toBe(false);
+      expect(isJsonString("plain text")).toBe(false);
+      expect(isJsonString("123")).toBe(false);
+      expect(isJsonString('"just a string"')).toBe(false);
+      expect(isJsonString("{ invalid json }")).toBe(false);
+    });
+  });
+
+  describe("summarizeJson", () => {
+    test("summarizes object with nested structures cleanly", () => {
+      const input = {
+        container: { kind: "project", id: "123" },
+        batch: [{ verb: "create", object: "utterance" }],
+      };
+      expect(summarizeJson(input)).toBe("{ container: {…}, batch: [1] }");
+    });
+
+    test("summarizes arrays with item count", () => {
+      expect(summarizeJson([1, 2, 3])).toBe("[3 items]");
+      expect(summarizeJson([])).toBe("[0 items]");
+      expect(summarizeJson(["one"])).toBe("[1 item]");
+    });
+
+    test("handles primitives and null values", () => {
+      expect(summarizeJson({ str: "hello", num: 42, active: true, nothing: null })).toBe('{ str: "hello", num: 42, active: true, nothing: null }');
+    });
+
+    test("handles empty object", () => {
+      expect(summarizeJson({})).toBe("{}");
+    });
+
+    test("truncates when exceeding maxLen", () => {
+      const large = {
+        key1: "very long text value here",
+        key2: "another long value here",
+        key3: "yet another value",
+        key4: "overflow",
+      };
+      const summary = summarizeJson(large, 40);
+      expect(summary).toContain("+");
+      expect(summary.length).toBeLessThanOrEqual(50);
     });
   });
 });

@@ -4,7 +4,7 @@ import path from "node:path";
 import { Pool } from "pg";
 import { createCliRenderer } from "@opentui/core";
 import { createRoot } from "@opentui/react";
-import { getSessionInfo, getSessionMessages, query } from "@anthropic-ai/claude-agent-sdk";
+import { getSessionMessages, query } from "@anthropic-ai/claude-agent-sdk";
 import type { Query } from "@anthropic-ai/claude-agent-sdk";
 
 import { App } from "./tui/App.tsx";
@@ -195,21 +195,13 @@ export async function runRepl(params: ReplParams): Promise<void> {
 
     if (resume) {
       try {
-        const [info, history] = await Promise.all([
-          getSessionInfo(resume, {
-            dir: params.cwd,
-            ...(sessionStoreHandle?.store ? { sessionStore: sessionStoreHandle.store } : {}),
-          }).catch(() => undefined),
-          getSessionMessages(resume, {
-            dir: params.cwd,
-            ...(sessionStoreHandle?.store ? { sessionStore: sessionStoreHandle.store } : {}),
-          }),
-        ]);
+        const history = await getSessionMessages(resume, {
+          dir: params.cwd,
+          ...(sessionStoreHandle?.store ? { sessionStore: sessionStoreHandle.store } : {}),
+        });
 
         const blocks = convertSessionMessagesToBlocks(history);
         chatStore.replaceBlocks(blocks);
-        const title = info?.summary || info?.customTitle || info?.firstPrompt || resume;
-        chatStore.pushHost(`Resumed session **${title}**.`);
         sessionStatus.applyInit({
           session_id: resume,
           model: DEFAULT_MODEL,

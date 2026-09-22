@@ -1,4 +1,4 @@
-import { listSessions } from "@anthropic-ai/claude-agent-sdk";
+import { listSessions, renameSession } from "@anthropic-ai/claude-agent-sdk";
 import type { Query, SessionStore } from "@anthropic-ai/claude-agent-sdk";
 
 import type { ChatStore } from "./tui/chat-store.ts";
@@ -22,6 +22,7 @@ export type CommandHandler = (ctx: CommandContext, arg?: string) => Promise<void
 // They stay listed in HOST_COMMANDS below for "/"-mention autocomplete's benefit.
 const COMMANDS: Record<string, CommandHandler> = {
   "/resume": handleResume,
+  "/rename": handleRename,
 };
 
 export interface CommandDescriptor {
@@ -34,6 +35,7 @@ export const HOST_COMMANDS: CommandDescriptor[] = [
   { name: "/usage", description: "Token and cost totals for this session" },
   { name: "/model", description: "Switch the active model" },
   { name: "/resume", description: "Pick a previous session to resume" },
+  { name: "/rename", description: "Rename the current session title" },
   { name: "/mcp", description: "Interactive MCP server and tool manager" },
   { name: "/artifacts", description: "Browse your published and shared artifacts" },
   { name: "/create-feature", description: "Run the deterministic feature-build pipeline" },
@@ -96,4 +98,32 @@ export async function handleResume(ctx: CommandContext, arg?: string): Promise<v
 
   ctx.chatStore.pushHost(`Resuming session ${picked.sessionId}...`);
   ctx.requestResume(picked.sessionId);
+}
+
+export async function handleRename(ctx: CommandContext, arg?: string): Promise<void> {
+  const sessionId = ctx.sessionStatus.store.get().sessionId;
+  if (!sessionId) {
+    ctx.chatStore.pushHost("No active session to rename. Start a conversation or resume a session first.");
+    return;
+  }
+
+  let newTitle = arg?.trim();
+  if (!newTitle) {
+    newTitle = (await ctx.askLine("New session title: ")).trim();
+  }
+
+  if (!newTitle) {
+    ctx.chatStore.pushHost("Session title cannot be empty.");
+    return;
+  }
+
+  try {
+    await renameSession(sessionId, newTitle, {
+      dir: ctx.cwd,
+      ...(ctx.sessionStore ? { sessionStore: ctx.sessionStore } : {}),
+    });
+    ctx.chatStore.pushHost(`Renamed session to **${newTitle}**.`);
+  } catch (err) {
+    ctx.chatStore.pushHost(`Failed to rename session: ${err instanceof Error ? err.message : String(err)}`);
+  }
 }

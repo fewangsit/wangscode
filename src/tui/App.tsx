@@ -80,6 +80,7 @@ export function App({
   sessionStore,
 }: AppProps): React.ReactNode {
   const blocks = useSyncExternalStore(chatStore.store.subscribe, chatStore.store.get);
+  const resumeEvent = useSyncExternalStore(chatStore.resumeEvent.subscribe, chatStore.resumeEvent.get);
   const activePrompt = useSyncExternalStore(inputRouter.promptStore.subscribe, inputRouter.promptStore.get);
   const permissionRequest = useSyncExternalStore(permissionRequestStore.store.subscribe, permissionRequestStore.store.get);
   const inputRef = useRef<TextareaRenderable>(null);
@@ -218,6 +219,28 @@ export function App({
       permissionScrollRef.current.scrollTop = 0;
     }
   }, [permissionKey]);
+
+  // When a session is resumed, scroll the chat history all the way down to the bottom
+  useEffect(() => {
+    if (resumeEvent === 0) return;
+    const scroll = (): void => {
+      if (chatScrollRef.current) {
+        const scrollBox = chatScrollRef.current;
+        const maxScroll = Math.max(0, scrollBox.scrollHeight - scrollBox.viewport.height);
+        scrollBox.scrollTop = maxScroll;
+      }
+    };
+    queueMicrotask(() => {
+      setIsUserScrolledUp(false);
+      scroll();
+    });
+    const t1 = setTimeout(scroll, 50);
+    const t2 = setTimeout(scroll, 150);
+    return () => {
+      clearTimeout(t1);
+      clearTimeout(t2);
+    };
+  }, [resumeEvent]);
   const permissionOptions = permissionOptionsFor(permissionRequest?.suggestions !== undefined);
 
   const isOverlayActive = Boolean(permissionRequest || usagePanelOpen || modelPickerOpen || sessionPickerOpen || mcpPanelOpen || artifactsPanelOpen);
@@ -528,8 +551,6 @@ export function App({
     const picked = sessionPickerSessions[sessionPickerIndex];
     closeSessionPicker();
     if (!picked) return;
-    const title = picked.summary || picked.firstPrompt || picked.sessionId;
-    chatStore.pushHost(`Resuming session **${title}**...`);
     requestResume?.(picked.sessionId);
   };
 

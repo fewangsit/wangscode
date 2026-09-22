@@ -38,6 +38,7 @@ const TICK_MS = 50;
  */
 export class ChatStore {
   readonly store = new Store<ChatBlock[]>([]);
+  readonly resumeEvent = new Store<number>(0);
   private nextId = 0;
   private toolIndex = new Map<string, number>(); // toolUseId -> blockId
   private toolInputBuffers = new Map<string, string>(); // toolUseId -> accumulated partial_json
@@ -143,6 +144,7 @@ export class ChatStore {
     }
     this.nextId = maxId;
     this.store.set(blocks);
+    this.resumeEvent.update((n) => n + 1);
   }
 
   private push(block: ChatBlock): void {

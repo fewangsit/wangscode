@@ -4,7 +4,11 @@ import { describe, expect, mock, test } from "bun:test";
 // CommandContext) — mock.module intercepts the whole specifier before the module under test is
 // imported, so /resume can be exercised without a real project directory or session files on disk.
 const listSessionsMock = mock(async () => [] as Array<{ sessionId: string; summary: string; lastModified: number; firstPrompt?: string }>);
-mock.module("@anthropic-ai/claude-agent-sdk", () => ({ listSessions: listSessionsMock }));
+const renameSessionMock = mock(async () => undefined);
+mock.module("@anthropic-ai/claude-agent-sdk", () => ({
+  listSessions: listSessionsMock,
+  renameSession: renameSessionMock,
+}));
 
 const { handleSlashCommand } = await import("../src/command-registry.ts");
 const { ChatStore } = await import("../src/tui/chat-store.ts");
@@ -101,5 +105,67 @@ describe("handleSlashCommand", () => {
     const { ctx } = makeContext();
     const handled = await handleSlashCommand("/mcp", ctx);
     expect(handled).toBe(false);
+  });
+
+  describe("/rename", () => {
+    test("renames the active session directly when title arg is provided", async () => {
+      const { ctx, chatStore } = makeContext();
+      ctx.sessionStatus.applyInit({
+        session_id: "active-session-123",
+        model: "claude-3-5-sonnet",
+        permissionMode: "default",
+        cwd: "/tmp/project",
+      });
+
+      const handled = await handleSlashCommand("/rename My Great Feature", ctx);
+      expect(handled).toBe(true);
+      expect(renameSessionMock).toHaveBeenCalledWith("active-session-123", "My Great Feature", expect.objectContaining({ dir: "/tmp/project" }));
+      expect(lastHostText(chatStore)).toContain("Renamed session to **My Great Feature**");
+    });
+
+    test("prompts for new title via askLine when no arg is provided", async () => {
+      const { ctx, chatStore } = makeContext({
+        askLine: async () => "Prompted Session Title",
+      });
+      ctx.sessionStatus.applyInit({
+        session_id: "active-session-456",
+        model: "claude-3-5-sonnet",
+        permissionMode: "default",
+        cwd: "/tmp/project",
+      });
+
+      const handled = await handleSlashCommand("/rename", ctx);
+      expect(handled).toBe(true);
+      expect(renameSessionMock).toHaveBeenCalledWith(
+        "active-session-456",
+        "Prompted Session Title",
+        expect.objectContaining({ dir: "/tmp/project" }),
+      );
+      expect(lastHostText(chatStore)).toContain("Renamed session to **Prompted Session Title**");
+    });
+
+    test("reports error when there is no active session", async () => {
+      const { ctx, chatStore } = makeContext();
+
+      const handled = await handleSlashCommand("/rename New Name", ctx);
+      expect(handled).toBe(true);
+      expect(lastHostText(chatStore)).toContain("No active session to rename");
+    });
+
+    test("reports error when new title is empty", async () => {
+      const { ctx, chatStore } = makeContext({
+        askLine: async () => "   ",
+      });
+      ctx.sessionStatus.applyInit({
+        session_id: "active-session-789",
+        model: "claude-3-5-sonnet",
+        permissionMode: "default",
+        cwd: "/tmp/project",
+      });
+
+      const handled = await handleSlashCommand("/rename", ctx);
+      expect(handled).toBe(true);
+      expect(lastHostText(chatStore)).toContain("Session title cannot be empty");
+    });
   });
 });
