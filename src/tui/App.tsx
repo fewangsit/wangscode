@@ -62,6 +62,7 @@ export interface AppProps {
   /** canUseTool requests land here instead of a plain-text askLine() prompt — see permission-prompt.ts. */
   permissionRequestStore: PermissionRequestStore;
   requestResume?: (sessionId: string) => void;
+  requestNewSession?: (initialPrompt?: string) => void;
   sessionStore?: SessionStore;
 }
 
@@ -77,6 +78,7 @@ export function App({
   getSession,
   permissionRequestStore,
   requestResume,
+  requestNewSession,
   sessionStore,
 }: AppProps): React.ReactNode {
   const blocks = useSyncExternalStore(chatStore.store.subscribe, chatStore.store.get);
@@ -905,6 +907,18 @@ export function App({
       updateInputDimensions();
     }
 
+    // A sequential askLine() prompt (/create-feature's Q&A, /resume's number
+    // prompt, /rename's title prompt — see input-router.ts) is waiting on the
+    // next line. Without this, Escape fell through to the generic
+    // onInterrupt() fallback below, which doesn't unblock the pending
+    // askLine() promise — the prompt just sat there un-cancelable.
+    if (activePrompt) {
+      if (key.name === "escape") {
+        inputRouter.cancel();
+      }
+      return;
+    }
+
     if (permissionRequest) {
       if (key.name === "pageup" || (key.shift && key.name === "up")) {
         if (permissionScrollRef.current) {
@@ -1189,6 +1203,12 @@ export function App({
         return;
       }
       openSessionPicker();
+      return;
+    }
+    if (!activePrompt && (text === "/new" || text.startsWith("/new "))) {
+      const arg = text.slice("/new".length).trim();
+      setInputText("");
+      requestNewSession?.(arg.length > 0 ? arg : undefined);
       return;
     }
     setIsUserScrolledUp(false);

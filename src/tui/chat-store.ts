@@ -127,6 +127,18 @@ export class ChatStore {
     }
   }
 
+  /** Clears all chat blocks and resets state for a new session. */
+  reset(): void {
+    this.flushAll();
+    this.toolIndex.clear();
+    this.toolInputBuffers.clear();
+    this.typewriters.clear();
+    this.sdkDone.clear();
+    this.nextId = 0;
+    this.store.set([{ id: this.nextId++, kind: "welcome" }]);
+    this.resumeEvent.update((n) => n + 1);
+  }
+
   /** Replaces all chat blocks with a restored history set — used on /resume. */
   replaceBlocks(blocks: ChatBlock[]): void {
     this.flushAll();

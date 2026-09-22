@@ -26,6 +26,8 @@ export interface SessionOptionsExtras {
   sessionStore?: SessionStore;
   /** Session ID to resume — consumed only at `query()` call time (see repl.tsx's restart loop). */
   resume?: string;
+  /** Model override to use for this session — defaults to DEFAULT_MODEL. */
+  model?: string;
 }
 
 // Builds the Options object for the one long-lived `query()` call the REPL
@@ -41,7 +43,7 @@ export function buildSessionOptions(
 ): Options {
   return {
     cwd,
-    model: DEFAULT_MODEL,
+    model: extras.model ?? DEFAULT_MODEL,
     includePartialMessages: true,
     ...(extras.sessionStore ? { sessionStore: extras.sessionStore } : {}),
     ...(extras.resume ? { resume: extras.resume } : {}),

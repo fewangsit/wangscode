@@ -151,4 +151,26 @@ describe("convertSessionMessagesToBlocks", () => {
     expect(finalBlocks.length).toBe(3);
     expect(finalBlocks[2]?.id).toBeGreaterThan(finalBlocks[1]?.id ?? 0);
   });
+
+  test("resets ChatStore with reset() for new session cleanly", () => {
+    const chatStore = new ChatStore();
+    chatStore.pushWelcome();
+    chatStore.pushUser("First message");
+    chatStore.pushHost("Reply");
+    expect(chatStore.store.get().length).toBe(3);
+
+    const prevResumeEvent = chatStore.resumeEvent.get();
+    chatStore.reset();
+
+    const blocks = chatStore.store.get();
+    expect(blocks.length).toBe(1);
+    expect(blocks[0]).toMatchObject({ id: 0, kind: "welcome" });
+    expect(chatStore.resumeEvent.get()).toBe(prevResumeEvent + 1);
+
+    // Ensure nextId resets to 1 for subsequent pushes
+    chatStore.pushUser("New session user message");
+    const updated = chatStore.store.get();
+    expect(updated.length).toBe(2);
+    expect(updated[1]).toMatchObject({ id: 1, kind: "user", text: "New session user message" });
+  });
 });

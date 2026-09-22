@@ -71,16 +71,20 @@ export async function runRepl(params: ReplParams): Promise<void> {
 
   const wangsUiInfo = detectProjectWangsUiVersion(params.cwd);
 
-  chatStore.pushWelcome();
-  if (sessionStoreHandle) chatStore.pushFooter("[Wangs Code] session mirroring to Postgres enabled");
-  if (!wangsUiInfo) {
-    chatStore.pushHost(
-      "⚠️ **Wangs UI is not detected in this repository.**\n\n" +
-        "This project does not have any `@wangs-ui/*` packages installed. Component research subagents (`wangs-ui-querier`) and design system tools will be inactive.\n\n" +
-        "• Type `/mcp` to configure or install the `wangs-ui` MCP server.\n" +
-        "• Install `@wangs-ui/react-core` (`bun add @wangs-ui/react-core`) to enable Wangs UI component development.",
-    );
-  }
+  const initChat = (): void => {
+    chatStore.reset();
+    if (sessionStoreHandle) chatStore.pushFooter("[Wangs Code] session mirroring to Postgres enabled");
+    if (!wangsUiInfo) {
+      chatStore.pushHost(
+        "⚠️ **Wangs UI is not detected in this repository.**\n\n" +
+          "This project does not have any `@wangs-ui/*` packages installed. Component research subagents (`wangs-ui-querier`) and design system tools will be inactive.\n\n" +
+          "• Type `/mcp` to configure or install the `wangs-ui` MCP server.\n" +
+          "• Install `@wangs-ui/react-core` (`bun add @wangs-ui/react-core`) to enable Wangs UI component development.",
+      );
+    }
+  };
+
+  initChat();
 
   // `resume` (an SDK `Options` field) is only consumable at `query()` call time — there's no
   // "resume this live session" method — so /resume can't just call something on `currentSession`.
@@ -91,6 +95,8 @@ export async function runRepl(params: ReplParams): Promise<void> {
   // Seeded from cli.ts's `--resume <id>` flag, if given — the first pass through the `for(;;)`
   // loop below resumes straight into that session instead of starting fresh.
   let pendingResumeId: string | undefined = params.resumeSessionId;
+  let pendingNewSession = false;
+  let pendingInitialPrompt: string | undefined;
   let closing = false;
   const packageInfo = getPackageInfo();
 
@@ -106,10 +112,18 @@ export async function runRepl(params: ReplParams): Promise<void> {
     sessionStore: sessionStoreHandle?.store,
     requestResume: (sessionId) => {
       pendingResumeId = sessionId;
+      pendingNewSession = false;
       // Closing the queue is what actually ends the current `for await` loop (see the `let
       // inputQueue` comment above) — interrupt() alone would leave this iteration running
       // indefinitely, waiting on a queue nothing will ever push to again. interrupt() is still
       // called too, so an in-flight turn aborts immediately instead of finishing out first.
+      inputQueue.close();
+      void currentSession?.interrupt().catch(() => undefined);
+    },
+    requestNewSession: (initialPrompt?: string) => {
+      pendingNewSession = true;
+      pendingInitialPrompt = initialPrompt;
+      pendingResumeId = undefined;
       inputQueue.close();
       void currentSession?.interrupt().catch(() => undefined);
     },
@@ -182,6 +196,7 @@ export async function runRepl(params: ReplParams): Promise<void> {
       getSession={() => currentSession}
       permissionRequestStore={permissionRequestStore}
       requestResume={commandCtx.requestResume}
+      requestNewSession={commandCtx.requestNewSession}
       sessionStore={sessionStoreHandle?.store}
     />,
   );
@@ -192,8 +207,15 @@ export async function runRepl(params: ReplParams): Promise<void> {
   for (;;) {
     const resume = pendingResumeId;
     pendingResumeId = undefined;
+    const isNewSession = pendingNewSession;
+    pendingNewSession = false;
+    const initialPrompt = pendingInitialPrompt;
+    pendingInitialPrompt = undefined;
 
-    if (resume) {
+    if (isNewSession) {
+      initChat();
+      sessionStatus.resetForNewSession();
+    } else if (resume) {
       try {
         const history = await getSessionMessages(resume, {
           dir: params.cwd,
@@ -216,25 +238,31 @@ export async function runRepl(params: ReplParams): Promise<void> {
     const options = buildSessionOptions(params.cwd, canUseTool, featureBuildController, {
       sessionStore: sessionStoreHandle?.store,
       resume,
+      model: sessionStatus.store.get().model ?? DEFAULT_MODEL,
     });
 
     const session = query({ prompt: inputQueue, options });
     currentSession = session;
+
+    if (initialPrompt) {
+      chatStore.pushUser(initialPrompt);
+      inputQueue.push(initialPrompt);
+    }
 
     try {
       for await (const message of session) {
         renderMessage(message);
       }
     } catch (err) {
-      // A resume-triggered queue close() legitimately unwinds this loop — only a genuine error
-      // (no resume pending) is worth surfacing.
-      if (pendingResumeId === undefined) {
+      // A resume-triggered or new-session-triggered queue close() legitimately unwinds this loop — only a genuine error
+      // (no resume or new session pending) is worth surfacing.
+      if (pendingResumeId === undefined && !pendingNewSession) {
         chatStore.pushFooter(`[Wangs Code] session error: ${err instanceof Error ? err.message : String(err)}`);
       }
     }
 
     if (closing) break;
-    if (pendingResumeId === undefined) break;
+    if (pendingResumeId === undefined && !pendingNewSession) break;
     inputQueue = new AsyncInputQueue(); // the old one is closed and permanently inert — see its own comment above
   }
 }

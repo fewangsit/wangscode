@@ -60,6 +60,15 @@ export class SessionStatusStore {
     this.store.update((prev) => ({ ...prev, effort }));
   }
 
+  /** Resets session id and usage totals for a fresh session while keeping model, cwd, and effort. */
+  resetForNewSession(): void {
+    this.store.update((prev) => ({
+      ...prev,
+      sessionId: null,
+      modelUsage: {},
+    }));
+  }
+
   /** `result` messages carry per-turn totals, not cumulative ones — sum them here across the session. */
   accumulateUsage(modelUsage: Record<string, ModelUsage>): void {
     this.store.update((prev) => {

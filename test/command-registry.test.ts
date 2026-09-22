@@ -10,7 +10,7 @@ mock.module("@anthropic-ai/claude-agent-sdk", () => ({
   renameSession: renameSessionMock,
 }));
 
-const { handleSlashCommand } = await import("../src/command-registry.ts");
+const { handleSlashCommand, HOST_COMMANDS } = await import("../src/command-registry.ts");
 const { ChatStore } = await import("../src/tui/chat-store.ts");
 const { SessionStatusStore } = await import("../src/tui/session-status.ts");
 
@@ -36,6 +36,7 @@ function makeContext(overrides: AnyCtx = {}): { ctx: AnyCtx; chatStore: Instance
     },
     cwd: "/tmp/project",
     requestResume: () => undefined,
+    requestNewSession: () => undefined,
     ...overrides,
   };
   return { ctx, chatStore };
@@ -166,6 +167,40 @@ describe("handleSlashCommand", () => {
       const handled = await handleSlashCommand("/rename", ctx);
       expect(handled).toBe(true);
       expect(lastHostText(chatStore)).toContain("Session title cannot be empty");
+    });
+  });
+
+  describe("/new", () => {
+    test("calls requestNewSession without arguments when just /new is dispatched", async () => {
+      let calledWith: string | undefined = "NOT_CALLED";
+      const { ctx } = makeContext({
+        requestNewSession: (initialPrompt?: string) => {
+          calledWith = initialPrompt;
+        },
+      });
+
+      const handled = await handleSlashCommand("/new", ctx);
+      expect(handled).toBe(true);
+      expect(calledWith).toBeUndefined();
+    });
+
+    test("calls requestNewSession with initial prompt when /new <prompt> is dispatched", async () => {
+      let calledWith: string | undefined = "NOT_CALLED";
+      const { ctx } = makeContext({
+        requestNewSession: (initialPrompt?: string) => {
+          calledWith = initialPrompt;
+        },
+      });
+
+      const handled = await handleSlashCommand("/new build a navbar component", ctx);
+      expect(handled).toBe(true);
+      expect(calledWith).toBe("build a navbar component");
+    });
+
+    test("HOST_COMMANDS includes /new with description", () => {
+      const newCmd = HOST_COMMANDS.find((c) => c.name === "/new");
+      expect(newCmd).toBeDefined();
+      expect(newCmd?.description).toBe("Start a new session");
     });
   });
 });

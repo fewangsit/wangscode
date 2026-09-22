@@ -1,5 +1,6 @@
 import { runFeatureBuildPipeline } from "./pipeline/index.ts";
 import type { FeatureBuildResult } from "./pipeline/index.ts";
+import { PromptCancelled } from "./tui/input-router.ts";
 import type { PendingFeatureBuild } from "./types.ts";
 
 export interface FeatureBuildStartArgs {
@@ -30,11 +31,11 @@ function hostFailure(err: unknown): HostFailureResult {
 }
 
 function renderResult(result: ControllerResult): string {
-  if (result.status === "needs_input") return result.pendingQuestion ?? "(needs_input, tidak ada pertanyaan)";
+  if (result.status === "needs_input") return result.pendingQuestion ?? "(needs_input, no question given)";
   if (result.status === "completed") {
-    return `Selesai. Fase: ${(result.completedPhases ?? []).join(" -> ")}`;
+    return `Done. Phases: ${(result.completedPhases ?? []).join(" -> ")}`;
   }
-  return `Gagal di fase "${result.escalation?.phase}":\n${result.escalation?.failureReport}`;
+  return `Failed at phase "${result.escalation?.phase}":\n${result.escalation?.failureReport}`;
 }
 
 /**
@@ -120,14 +121,22 @@ export class FeatureBuildController {
       .filter(Boolean);
   }
 
+  /** Esc during any of the questions below rejects the pending `askLine()` with `PromptCancelled` (see input-router.ts) — caught here so it aborts the whole sequence silently instead of leaving a half-answered prompt hanging or falling through to `onInterrupt()`. Cancelled just means cancelled — no message, straight back to the normal prompt. */
   private async runInteractivePrompt(print: (text: string) => void): Promise<void> {
-    const featureSlug = await this.ask("Feature slug (kebab-case): ");
-    const prd = await this.ask("Path ke PRD (single-file, PRD/<feature-name>.md): ");
-    const testCase = await this.askPaths("Path ke Test Case .md (pisahkan koma kalau lebih dari satu file): ");
-    const openapi = await this.askPaths("Path ke API spec/LLD (.yaml dan/atau .md, pisahkan koma kalau lebih dari satu file): ");
-    print("\nMenjalankan feature-build pipeline...\n");
-    const result = await this.start({ featureSlug, prd, testCase, openapi });
-    print(renderResult(result));
+    try {
+      const featureSlug = await this.ask("Feature slug (kebab-case) — Esc to cancel: ");
+      const prd = await this.ask("Path to the single-file PRD (PRD/<feature-name>.md) — Esc to cancel: ");
+      const testCase = await this.askPaths("Path(s) to the Test Case file(s), comma-separated if more than one — Esc to cancel: ");
+      const openapi = await this.askPaths(
+        "Path(s) to the API spec/LLD file(s) (.yaml and/or .md), comma-separated if more than one — Esc to cancel: ",
+      );
+      print("\nRunning the feature-build pipeline...\n");
+      const result = await this.start({ featureSlug, prd, testCase, openapi });
+      print(renderResult(result));
+    } catch (err) {
+      if (err instanceof PromptCancelled) return;
+      throw err;
+    }
   }
 
   /**
@@ -138,7 +147,7 @@ export class FeatureBuildController {
     const trimmed = line.trim();
 
     if (this.busy) {
-      print("[Wangs Code] Feature-build sedang berjalan, tunggu sampai selesai atau butuh jawaban.");
+      print("[Wangs Code] A feature-build is already running — wait for it to finish or answer its question.");
       return true;
     }
 

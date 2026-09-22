@@ -2,6 +2,7 @@ import { listSessions, renameSession } from "@anthropic-ai/claude-agent-sdk";
 import type { Query, SessionStore } from "@anthropic-ai/claude-agent-sdk";
 
 import type { ChatStore } from "./tui/chat-store.ts";
+import { PromptCancelled } from "./tui/input-router.ts";
 import type { SessionStatusStore } from "./tui/session-status.ts";
 
 export interface CommandContext {
@@ -13,6 +14,7 @@ export interface CommandContext {
   sessionStore?: SessionStore;
   /** `resume` is only consumable at `query()` call time (see repl.tsx's restart loop) — this doesn't restart anything itself, just records the request. */
   requestResume: (sessionId: string) => void;
+  requestNewSession: (initialPrompt?: string) => void;
 }
 
 export type CommandHandler = (ctx: CommandContext, arg?: string) => Promise<void>;
@@ -23,6 +25,7 @@ export type CommandHandler = (ctx: CommandContext, arg?: string) => Promise<void
 const COMMANDS: Record<string, CommandHandler> = {
   "/resume": handleResume,
   "/rename": handleRename,
+  "/new": handleNewSession,
 };
 
 export interface CommandDescriptor {
@@ -32,6 +35,7 @@ export interface CommandDescriptor {
 
 /** Commands dispatched entirely on the host side — never reach the model. Doubles as the "/"-mention autocomplete source (see tui/autocomplete.ts) alongside whatever `session.supportedCommands()` reports. */
 export const HOST_COMMANDS: CommandDescriptor[] = [
+  { name: "/new", description: "Start a new session" },
   { name: "/usage", description: "Token and cost totals for this session" },
   { name: "/model", description: "Switch the active model" },
   { name: "/resume", description: "Pick a previous session to resume" },
@@ -89,7 +93,13 @@ export async function handleResume(ctx: CommandContext, arg?: string): Promise<v
   const listing = sessions.map((s, i) => `${i + 1}. ${s.summary || s.firstPrompt || "(no summary)"} — ${new Date(s.lastModified).toLocaleString()}`);
   ctx.chatStore.pushHost(["## Previous sessions", "", ...listing].join("\n"));
 
-  const answer = await ctx.askLine("Resume which session (number): ");
+  let answer: string;
+  try {
+    answer = await ctx.askLine("Resume which session (number) — Esc to cancel: ");
+  } catch (err) {
+    if (err instanceof PromptCancelled) return;
+    throw err;
+  }
   const picked = sessions[Number.parseInt(answer.trim(), 10) - 1];
   if (!picked) {
     ctx.chatStore.pushHost(`No session at "${answer}" — staying on the current session.`);
@@ -109,7 +119,12 @@ export async function handleRename(ctx: CommandContext, arg?: string): Promise<v
 
   let newTitle = arg?.trim();
   if (!newTitle) {
-    newTitle = (await ctx.askLine("New session title: ")).trim();
+    try {
+      newTitle = (await ctx.askLine("New session title — Esc to cancel: ")).trim();
+    } catch (err) {
+      if (err instanceof PromptCancelled) return;
+      throw err;
+    }
   }
 
   if (!newTitle) {
@@ -126,4 +141,8 @@ export async function handleRename(ctx: CommandContext, arg?: string): Promise<v
   } catch (err) {
     ctx.chatStore.pushHost(`Failed to rename session: ${err instanceof Error ? err.message : String(err)}`);
   }
+}
+
+export async function handleNewSession(ctx: CommandContext, arg?: string): Promise<void> {
+  ctx.requestNewSession(arg?.trim() || undefined);
 }
