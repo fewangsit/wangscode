@@ -19,6 +19,11 @@ export const ROSE = "#fb7185";
 // rather than guessed), which still reads correctly against any background.
 export const HERO_BORDER = "#665129";
 export const ICON_BORDER = "#8d6a2a";
+// Pulse trough for the turn-status indicator's animated star/verb (BlockRenderers.tsx) — GOLD
+// blended ~55% toward BG, same pre-blended-solid-color approach as HERO_BORDER/ICON_BORDER above
+// (OpenTUI has no real alpha/gradient support — confirmed no per-side opacity on Renderable —
+// so "dimmer gold" has to be a second precomputed hex, not GOLD at reduced opacity).
+export const GOLD_DIM = "#876c4a";
 
 export const ROLE_COLOR: Record<string, string> = {
   user: GOLD,

@@ -149,6 +149,12 @@ export async function runRepl(params: ReplParams): Promise<void> {
       const handledByCommand = await handleSlashCommand(line, commandCtx);
       if (handledByCommand) return;
 
+      // The turn is genuinely on its way to the model now — surfaces a "waiting for response"
+      // indicator (see chat-store.ts) until the first visible block of the turn appears, so a slow
+      // model response doesn't read as the app being stuck. Cleared automatically by the first
+      // `push()` the turn causes (thinking, a tool call, or the first assistant text delta), not by
+      // a timer.
+      chatStore.startWaiting();
       inputQueue.push(line);
     })();
   });

@@ -23,7 +23,7 @@ import { listAvailableCommands, type CommandDescriptor } from "../command-regist
 import { createAppSyntaxStyle } from "./syntax-theme.ts";
 import { BG, GOLD } from "./theme.ts";
 import { WelcomeBanner } from "./WelcomeBanner.tsx";
-import { renderBlock } from "./BlockRenderers.tsx";
+import { renderBlock, TurnStatusIndicator } from "./BlockRenderers.tsx";
 import { SuggestionBox, type Suggestion } from "./SuggestionBox.tsx";
 import { clampEffort, ModelPicker } from "./ModelPicker.tsx";
 import { UsagePanel } from "./UsagePanel.tsx";
@@ -83,6 +83,9 @@ export function App({
 }: AppProps): React.ReactNode {
   const blocks = useSyncExternalStore(chatStore.store.subscribe, chatStore.store.get);
   const resumeEvent = useSyncExternalStore(chatStore.resumeEvent.subscribe, chatStore.resumeEvent.get);
+  const waiting = useSyncExternalStore(chatStore.waitingStore.subscribe, chatStore.waitingStore.get);
+  const turn = useSyncExternalStore(chatStore.turnStore.subscribe, chatStore.turnStore.get);
+  const effort = useSyncExternalStore(sessionStatus.store.subscribe, () => sessionStatus.store.get().effort);
   const activePrompt = useSyncExternalStore(inputRouter.promptStore.subscribe, inputRouter.promptStore.get);
   const permissionRequest = useSyncExternalStore(permissionRequestStore.store.subscribe, permissionRequestStore.store.get);
   const inputRef = useRef<TextareaRenderable>(null);
@@ -1216,10 +1219,34 @@ export function App({
     inputRouter.submit(text);
   };
 
+  // Includes `waiting`, not just `blocks`-derived streaming state — otherwise there's a real gap
+  // between submit and the first visible block (thinking/tool/text) where stickyScroll turns off,
+  // so the user's own just-sent message (and the TurnStatusIndicator once it appears) don't
+  // reliably land at the bottom of the scrollbox.
   const isStreaming = useMemo(
-    () => blocks.some((b) => ((b.kind === "assistant" || b.kind === "thinking") && b.streaming) || (b.kind === "tool" && b.status === "running")),
-    [blocks],
+    () =>
+      waiting ||
+      blocks.some((b) => ((b.kind === "assistant" || b.kind === "thinking") && b.streaming) || (b.kind === "tool" && b.status === "running")),
+    [blocks, waiting],
   );
+
+  // Once a turn genuinely ends (isStreaming false-going-edge, not just re-rendering while already
+  // idle), close it out: capture how long it actually took for a brief "✻ Worked for Xs" note
+  // (matching Claude Code's own completion line), then clear chatStore's turnStore so the next
+  // turn starts its own fresh timer/token count instead of accumulating across turns.
+  const wasStreamingRef = useRef(false);
+  const [justFinishedSeconds, setJustFinishedSeconds] = useState<number | null>(null);
+  useEffect(() => {
+    if (wasStreamingRef.current && !isStreaming && turn) {
+      setJustFinishedSeconds(Math.max(0, Math.round((Date.now() - turn.startedAt) / 1000)));
+      chatStore.endTurn();
+      const timer = setTimeout(() => setJustFinishedSeconds(null), 4000);
+      wasStreamingRef.current = isStreaming;
+      return () => clearTimeout(timer);
+    }
+    wasStreamingRef.current = isStreaming;
+    return undefined;
+  }, [isStreaming, turn, chatStore]);
 
   const visibleLines = Math.min(10, Math.max(1, inputScrollState.lines));
   const linesAbove = Math.max(0, inputScrollState.scrollY);
@@ -1261,6 +1288,13 @@ export function App({
           />
         ) : null}
         {blocks.filter((b) => b.kind !== "welcome").map((block) => renderBlock(block, syntaxStyle))}
+        {turn ? <TurnStatusIndicator turn={turn} blocks={blocks} effort={effort} /> : null}
+        {!turn && justFinishedSeconds !== null ? (
+          <text
+            content={`✻ Worked for ${justFinishedSeconds < 60 ? `${justFinishedSeconds}s` : `${Math.floor(justFinishedSeconds / 60)}m ${justFinishedSeconds % 60}s`}`}
+            style={{ fg: "#565f89", marginBottom: 1 }}
+          />
+        ) : null}
       </scrollbox>
 
       {permissionRequest ? (

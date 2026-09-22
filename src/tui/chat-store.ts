@@ -39,11 +39,33 @@ const TICK_MS = 50;
 export class ChatStore {
   readonly store = new Store<ChatBlock[]>([]);
   readonly resumeEvent = new Store<number>(0);
+  /** True from the moment a message is handed to the model until the first visible block of the
+   *  turn appears (see `startWaiting`/the `push` override below) — surfaces a "waiting for
+   *  response" indicator so a slow-to-start turn doesn't read as the app being stuck. */
+  readonly waitingStore = new Store<boolean>(false);
+  /**
+   * Non-null for the whole span of one turn — from `startWaiting()` until `endTurn()` (called by
+   * App.tsx once nothing is waiting/streaming/running anymore), not just the pre-first-block
+   * window `waitingStore` covers. Drives the live status line (elapsed time, a rough output-token
+   * estimate from `startBlockId` onward, current phase) the same way Claude Code's own turn
+   * indicator works, instead of a static "waiting" message that never changes for however long the
+   * turn takes.
+   */
+  readonly turnStore = new Store<{ startedAt: number; startBlockId: number } | null>(null);
   private nextId = 0;
   private toolIndex = new Map<string, number>(); // toolUseId -> blockId
   private toolInputBuffers = new Map<string, string>(); // toolUseId -> accumulated partial_json
   private typewriters = new Map<number, Typewriter>(); // blockId -> Typewriter
   private sdkDone = new Set<number>(); // blockId — SDK signaled no more deltas, animation may still be draining
+  /**
+   * kind -> id of the block currently accepting deltas for that kind. Explicit instead of
+   * "whichever block happens to be last in `store`" (the old design) — a tool_use block routinely
+   * gets pushed between a thinking block starting and the SDK's own message finalizing it (the
+   * common think -> call a tool -> think pattern), which left `finishThinking()` unable to find
+   * "its" block by array position and silently no-op, stranding the block's `streaming: true`
+   * forever (the 💭 indicator that never goes away).
+   */
+  private activeStreamingId = new Map<StreamingKind, number>();
   private tickTimer: ReturnType<typeof setInterval> | null = null;
   private lastTickAt = Date.now();
 
@@ -61,6 +83,21 @@ export class ChatStore {
 
   pushFooter(text: string): void {
     this.push({ id: this.nextId++, kind: "footer", text });
+  }
+
+  /** Call right before handing a line to the model — see repl.tsx. `waitingStore` clears automatically the moment any new block is pushed (thinking/tool_use start, or the first assistant text delta), never by a timer; `turnStore` stays set for the whole turn until `endTurn()`. */
+  startWaiting(): void {
+    this.waitingStore.set(true);
+    this.turnStore.set({ startedAt: Date.now(), startBlockId: this.nextId });
+  }
+
+  stopWaiting(): void {
+    this.waitingStore.set(false);
+  }
+
+  /** Call once the turn has genuinely finished (no longer waiting, nothing streaming, no tool running) — see App.tsx's `isStreaming` transition to false. */
+  endTurn(): void {
+    this.turnStore.set(null);
   }
 
   appendAssistantDelta(delta: string): void {
@@ -121,6 +158,9 @@ export class ChatStore {
         return { ...block, text: block.text + rest, streaming: false };
       }),
     );
+    this.activeStreamingId.clear();
+    this.stopWaiting();
+    this.endTurn();
     if (this.tickTimer) {
       clearInterval(this.tickTimer);
       this.tickTimer = null;
@@ -134,6 +174,7 @@ export class ChatStore {
     this.toolInputBuffers.clear();
     this.typewriters.clear();
     this.sdkDone.clear();
+    this.activeStreamingId.clear();
     this.nextId = 0;
     this.store.set([{ id: this.nextId++, kind: "welcome" }]);
     this.resumeEvent.update((n) => n + 1);
@@ -160,6 +201,10 @@ export class ChatStore {
   }
 
   private push(block: ChatBlock): void {
+    // Any new block appearing means the turn has visibly started — clears the "waiting for
+    // response" indicator regardless of which kind of block it is (thinking, tool call, or the
+    // first assistant text delta all reach here, see appendStreamingDelta/startToolCall).
+    this.stopWaiting();
     this.store.update((blocks) => [...blocks, block]);
   }
 
@@ -170,13 +215,10 @@ export class ChatStore {
   }
 
   private appendStreamingDelta(kind: StreamingKind, delta: string): void {
-    const blocks = this.store.get();
-    const last = blocks[blocks.length - 1];
-    let blockId: number;
-    if (last && last.kind === kind && last.streaming && !this.sdkDone.has(last.id)) {
-      blockId = last.id;
-    } else {
+    let blockId = this.activeStreamingId.get(kind);
+    if (blockId === undefined) {
       blockId = this.nextId++;
+      this.activeStreamingId.set(kind, blockId);
       this.push({ id: blockId, kind, text: "", streaming: true } as ChatBlock);
     }
 
@@ -190,16 +232,16 @@ export class ChatStore {
   }
 
   private markSdkDone(kind: StreamingKind): void {
-    const blocks = this.store.get();
-    const last = blocks[blocks.length - 1];
-    if (!last || last.kind !== kind) return;
+    const blockId = this.activeStreamingId.get(kind);
+    if (blockId === undefined) return;
+    this.activeStreamingId.delete(kind);
 
-    if (!this.typewriters.has(last.id)) {
+    if (!this.typewriters.has(blockId)) {
       // No deltas ever arrived for this block (e.g. empty content) — nothing to animate, finish immediately.
-      this.store.update((bs) => bs.map((b) => (b.id === last.id ? { ...b, streaming: false } : b)));
+      this.store.update((bs) => bs.map((b) => (b.id === blockId ? { ...b, streaming: false } : b)));
       return;
     }
-    this.sdkDone.add(last.id);
+    this.sdkDone.add(blockId);
   }
 
   private ensureTicking(): void {

@@ -2,9 +2,9 @@ import { useEffect, useState } from "react";
 
 import type { SyntaxStyle } from "@opentui/core";
 
-import type { ChatBlock } from "./chat-store.ts";
+import type { ChatBlock, ToolCallBlock } from "./chat-store.ts";
 import { formatToolCall, getNodeSummary, isJsonString } from "./format.ts";
-import { GOLD, ROLE_COLOR, TOOL_STATUS_COLOR, TOOL_STATUS_GLYPH } from "./theme.ts";
+import { GOLD, GOLD_DIM, ROLE_COLOR, TOOL_STATUS_COLOR, TOOL_STATUS_GLYPH } from "./theme.ts";
 
 export interface JsonNodeViewProps {
   keyName?: string;
@@ -173,21 +173,165 @@ function ToolCallRow({ block, syntaxStyle }: { block: Extract<ChatBlock, { kind:
 const THINKING_FRAMES = ["💭   ", "💭 . ", "💭 ..", "💭..."];
 const THINKING_FRAME_MS = 350;
 
+// Purely cosmetic — same spirit as Claude Code's own rotating verb ("Roosting…", etc.) but this is
+// wangs-code's own list, not a copy of theirs (we don't have their actual word list, only a couple
+// of example screenshots to go on). Picked deterministically from the current phase (see
+// `phaseKey` below), NOT a timer — a fixed-interval rotation changes words on a clock that has
+// nothing to do with what's actually happening, which reads as noise once you notice it (a real
+// complaint from watching Claude Code itself: the word only changes when the underlying process
+// genuinely changes — thinking, then a tool call, then another tool call, then responding — and
+// holds steady for however long that phase actually takes, not a fixed few seconds).
+const TURN_VERBS = ["Thinking", "Working", "Noodling", "Pondering", "Percolating", "Mulling", "Tinkering", "Chewing"];
+const TURN_TICK_MS = 1000;
+
+// The star glyph cycles through a small rotation (spinner-style) and the "✻ Verb…" segment's
+// color pulses between GOLD_DIM and GOLD on a sine wave — both driven by the same fast animation
+// tick, independent of the phase/verb logic above (that changes on real events; this is just
+// motion to read as "still alive" while a phase holds steady for a while).
+const STAR_FRAMES = ["✶", "✸", "✹", "✺"];
+const ANIMATION_TICK_MS = 140;
+const PULSE_STEP = 0.35; // radians advanced per tick — full pulse cycle ≈ (2π / this) × ANIMATION_TICK_MS ≈ 2.5s
+
+function formatElapsed(totalSeconds: number): string {
+  if (totalSeconds < 60) return `${totalSeconds}s`;
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return `${minutes}m ${seconds}s`;
+}
+
+/** Same phaseKey in, same verb out — no state, no timer, just a stable pick per phase. */
+function verbForPhase(phaseKey: string): string {
+  let hash = 0;
+  for (let i = 0; i < phaseKey.length; i++) {
+    hash = (hash * 31 + phaseKey.charCodeAt(i)) | 0;
+  }
+  return TURN_VERBS[Math.abs(hash) % TURN_VERBS.length]!;
+}
+
+function hexToRgb(hex: string): [number, number, number] {
+  const n = Number.parseInt(hex.slice(1), 16);
+  return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+}
+
+/** OpenTUI has no real color-interpolation/alpha primitive (confirmed: no per-side opacity, no
+ *  gradient) — the "pulse" is just picking a fresh precomputed hex string every animation tick. */
+function pulseGold(t: number): string {
+  const [r1, g1, b1] = hexToRgb(GOLD_DIM);
+  const [r2, g2, b2] = hexToRgb(GOLD);
+  const mix = (a: number, b: number) => Math.round(a + (b - a) * t);
+  return `#${[mix(r1, r2), mix(g1, g2), mix(b1, b2)].map((v) => v.toString(16).padStart(2, "0")).join("")}`;
+}
+
+export interface TurnStatusProps {
+  /** Non-null for the whole span of one turn — see chat-store.ts's `turnStore`. */
+  turn: { startedAt: number; startBlockId: number } | null;
+  blocks: ChatBlock[];
+  effort?: string | null;
+}
+
+/**
+ * Live status line for the span of one turn — from the moment a message is sent (before anything
+ * has streamed back yet) through thinking/tool calls/response text, ending only once the turn is
+ * genuinely done. Replaces a static "Waiting for response..." that never changed no matter how
+ * long a turn actually took (todo item 16's "kadang tidak muncul, dan kadang muncul tapi tidak
+ * hilang" complaint) with something that reflects what's actually happening right now — modeled on
+ * Claude Code's own turn indicator ("· Roosting… (20s · ↓ 591 tokens · thinking with medium
+ * effort)"), not copied verbatim since the exact mechanism (and word list) isn't ours to read.
+ *
+ * The token count is a rough estimate (accumulated thinking/assistant text length ÷ 4 since
+ * `turn.startBlockId`), not the API's real billed token count — there's no live "tokens so far"
+ * figure available from the SDK for a normal (non-redacted) streaming turn, only
+ * `SDKThinkingTokensMessage.estimated_tokens` during redacted-thinking, which doesn't cover the
+ * common case. Good enough for a progress indicator, not meant to be exact.
+ */
+export function TurnStatusIndicator({ turn, blocks, effort }: TurnStatusProps): React.ReactNode {
+  // Elapsed time is computed from Date.now() INSIDE the interval callback (an effect, not render)
+  // and stored in state — computing it directly in the render body would call an impure function
+  // (Date.now) during render, which oxlint's react(purity) check rightly rejects: render must be a
+  // pure function of props/state, or it produces unstable/unpredictable output across re-renders.
+  const [elapsedSeconds, setElapsedSeconds] = useState(0);
+  const [animFrame, setAnimFrame] = useState(0);
+
+  useEffect(() => {
+    if (!turn) return;
+    // No synchronous setState here at mount — this component only mounts when `turn` transitions
+    // to non-null (see App.tsx's `{turn ? <TurnStatusIndicator .../> : null}`), so elapsedSeconds's
+    // initial 0 is already correct for that instant; the interval takes over from the first tick.
+    const id = setInterval(() => {
+      setElapsedSeconds(Math.max(0, Math.round((Date.now() - turn.startedAt) / 1000)));
+    }, TURN_TICK_MS);
+    return () => clearInterval(id);
+  }, [turn]);
+
+  useEffect(() => {
+    if (!turn) return;
+    const id = setInterval(() => setAnimFrame((f) => f + 1), ANIMATION_TICK_MS);
+    return () => clearInterval(id);
+  }, [turn]);
+
+  if (!turn) return null;
+
+  const turnBlocks = blocks.filter((b) => b.id >= turn.startBlockId);
+  const charCount = turnBlocks.reduce((sum, b) => sum + (b.kind === "assistant" || b.kind === "thinking" ? b.text.length : 0), 0);
+  const tokenEstimate = Math.round(charCount / 4);
+
+  const runningTool = [...turnBlocks].reverse().find((b): b is ToolCallBlock => b.kind === "tool" && b.status === "running");
+  const activeThinking = turnBlocks.find((b) => b.kind === "thinking" && b.streaming);
+  const activeAssistant = turnBlocks.find((b) => b.kind === "assistant" && b.streaming);
+
+  // Identifies WHICH specific thing is happening right now, not just its category — two different
+  // tool calls in a row (toolUseId differs) count as a new phase just as much as thinking->tool
+  // does, so the verb changes for each, not just at category boundaries.
+  let phaseKey: string;
+  let phase: string;
+  if (runningTool) {
+    phaseKey = `tool:${runningTool.toolUseId}`;
+    phase = `running ${runningTool.name}`;
+  } else if (activeThinking) {
+    phaseKey = `thinking:${activeThinking.id}`;
+    phase = effort ? `thinking with ${effort} effort` : "thinking";
+  } else if (activeAssistant) {
+    phaseKey = `responding:${activeAssistant.id}`;
+    phase = "responding";
+  } else {
+    phaseKey = "waiting";
+    phase = "waiting for response";
+  }
+
+  const tokenPart = tokenEstimate > 0 ? ` · ↓ ${tokenEstimate} tokens` : "";
+  const star = STAR_FRAMES[animFrame % STAR_FRAMES.length];
+  const pulseT = (Math.sin(animFrame * PULSE_STEP) + 1) / 2;
+  const detail = `(${formatElapsed(elapsedSeconds)}${tokenPart} · ${phase})`;
+
+  return (
+    <box style={{ flexDirection: "row", marginBottom: 1 }}>
+      <text content={`${star} ${verbForPhase(phaseKey)}… `} style={{ fg: pulseGold(pulseT) }} />
+      <text content={detail} style={{ fg: "#565f89" }} />
+    </box>
+  );
+}
+
 /** While a thinking block has no text yet (the model hasn't emitted a delta), there's nothing to
  *  show but the icon sitting there motionless — cycles a small dot animation instead, so it reads
  *  as "actively thinking" rather than possibly stalled. Stops the moment real text starts arriving
- *  (the streaming text itself is motion enough at that point). */
+ *  (the streaming text itself is motion enough at that point) — AND stops once `block.streaming`
+ *  goes false even if no text ever arrived (the model can produce a `redacted_thinking` block with
+ *  no visible summary by design, not a bug — see render.ts). The animation used to key only on
+ *  `hasText`, so a redacted/summary-less thinking block animated forever, well past the turn
+ *  actually finishing and the real response already showing — exactly the "itu selalu animating,
+ *  itu aneh" bug report: it looked stuck, not just quiet. */
 function ThinkingRow({ block }: { block: Extract<ChatBlock, { kind: "thinking" }> }): React.ReactNode {
   const [frame, setFrame] = useState(0);
   const hasText = block.text.length > 0;
+  const animating = !hasText && block.streaming;
 
   useEffect(() => {
-    if (hasText) return;
+    if (!animating) return;
     const id = setInterval(() => setFrame((f) => (f + 1) % THINKING_FRAMES.length), THINKING_FRAME_MS);
     return () => clearInterval(id);
-  }, [hasText]);
+  }, [animating]);
 
-  const content = hasText ? `💭 ${block.text}` : THINKING_FRAMES[frame];
+  const content = hasText ? `💭 ${block.text}` : animating ? THINKING_FRAMES[frame] : "💭 (reasoning hidden)";
   return <text content={content} style={{ fg: "#565f89", marginBottom: 1 }} />;
 }
 
