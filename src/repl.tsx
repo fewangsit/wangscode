@@ -22,6 +22,7 @@ import { handleSlashCommand } from "./command-registry.ts";
 import type { CommandContext } from "./command-registry.ts";
 import { PACKAGE_ROOT } from "./package-root.ts";
 import { detectProjectWangsUiVersion } from "./mcp-sync.ts";
+import { syncProjectSkillProviders } from "./skills-sync.ts";
 
 export interface ReplParams {
   cwd: string;
@@ -71,7 +72,7 @@ export async function runRepl(params: ReplParams): Promise<void> {
 
   const wangsUiInfo = detectProjectWangsUiVersion(params.cwd);
 
-  const initChat = (): void => {
+  const initChat = async (): Promise<void> => {
     chatStore.reset();
     if (sessionStoreHandle) chatStore.pushFooter("[Wangs Code] session mirroring to Postgres enabled");
     if (!wangsUiInfo) {
@@ -82,9 +83,20 @@ export async function runRepl(params: ReplParams): Promise<void> {
           "• Install `@wangs-ui/react-core` (`bun add @wangs-ui/react-core`) to enable Wangs UI component development.",
       );
     }
+
+    // Keeps @testspectra/skills / @wangs-ui/skills's bundled SKILL.md files synced into
+    // ~/.claude/skills — global, not project-local, so there's nothing to gitignore or accidentally
+    // commit (see skills-sync.ts). Silent when neither provider is installed in this project; only
+    // worth a footer line when something was actually synced.
+    const skillSyncResults = await syncProjectSkillProviders(params.cwd);
+    const synced = skillSyncResults.filter((r) => r.installedSkillIds.length > 0);
+    if (synced.length > 0) {
+      const summary = synced.map((r) => `${r.label} (${r.installedSkillIds.length})`).join(", ");
+      chatStore.pushFooter(`[Wangs Code] synced skills into ~/.claude/skills — ${summary}`);
+    }
   };
 
-  initChat();
+  await initChat();
 
   // `resume` (an SDK `Options` field) is only consumable at `query()` call time — there's no
   // "resume this live session" method — so /resume can't just call something on `currentSession`.
@@ -219,7 +231,7 @@ export async function runRepl(params: ReplParams): Promise<void> {
     pendingInitialPrompt = undefined;
 
     if (isNewSession) {
-      initChat();
+      await initChat();
       sessionStatus.resetForNewSession();
     } else if (resume) {
       try {

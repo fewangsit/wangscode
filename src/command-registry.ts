@@ -1,6 +1,7 @@
 import { listSessions, renameSession } from "@anthropic-ai/claude-agent-sdk";
 import type { Query, SessionStore } from "@anthropic-ai/claude-agent-sdk";
 
+import { syncSkillProvidersWithFetch } from "./skills-sync.ts";
 import type { ChatStore } from "./tui/chat-store.ts";
 import { PromptCancelled } from "./tui/input-router.ts";
 import type { SessionStatusStore } from "./tui/session-status.ts";
@@ -26,6 +27,7 @@ const COMMANDS: Record<string, CommandHandler> = {
   "/resume": handleResume,
   "/rename": handleRename,
   "/new": handleNewSession,
+  "/doctor": handleDoctor,
 };
 
 export interface CommandDescriptor {
@@ -43,6 +45,7 @@ export const HOST_COMMANDS: CommandDescriptor[] = [
   { name: "/mcp", description: "Interactive MCP server and tool manager" },
   { name: "/artifacts", description: "Browse your published and shared artifacts" },
   { name: "/create-feature", description: "Run the deterministic feature-build pipeline" },
+  { name: "/doctor", description: "Check and sync agent skills (TestSpectra, Wangs UI), fetching on demand if needed" },
   { name: "/exit", description: "Quit Wangs Code" },
 ];
 
@@ -145,4 +148,26 @@ export async function handleRename(ctx: CommandContext, arg?: string): Promise<v
 
 export async function handleNewSession(ctx: CommandContext, arg?: string): Promise<void> {
   ctx.requestNewSession(arg?.trim() || undefined);
+}
+
+/** Unlike the silent startup sync (repl.tsx's `initChat()`, project-installed providers only, no
+ *  network), this is explicit and user-triggered — so it's allowed to fetch a provider package on
+ *  demand (into a wangs-code-owned cache, not the project's own node_modules) when the current
+ *  project doesn't have it installed, and report exactly what it found/did either way. */
+export async function handleDoctor(ctx: CommandContext): Promise<void> {
+  ctx.chatStore.pushHost("🩺 Checking agent skill providers (TestSpectra, Wangs UI)...");
+
+  const results = await syncSkillProvidersWithFetch(ctx.cwd);
+  const lines = results.map((r) => {
+    if (r.installedSkillIds.length > 0) {
+      const sourceLabel = r.source === "project" ? "installed in this project" : "fetched on demand, cached for next time";
+      return `✅ **${r.label}** (\`${r.packageName}\`) — ${sourceLabel}. Synced ${r.installedSkillIds.length} skill(s) into \`~/.claude/skills\`: ${r.installedSkillIds.join(", ")}`;
+    }
+    if (r.error) {
+      return `⚠️ **${r.label}** (\`${r.packageName}\`) — found the package but couldn't read its skills: ${r.error}`;
+    }
+    return `⬜ **${r.label}** (\`${r.packageName}\`) — not installed in this project, and couldn't be fetched (offline, or the package isn't published).`;
+  });
+
+  ctx.chatStore.pushHost(["## Skills doctor", "", ...lines].join("\n"));
 }
