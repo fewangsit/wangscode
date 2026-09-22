@@ -221,11 +221,15 @@ describe("mcp-sync", () => {
       process.env.WANGS_CODE_REGISTRY = "http://registry.example/";
       try {
         const config = resolveWangsUiMcpServer(tempDir);
-        expect(config).toEqual({
-          type: "stdio",
-          command: "npx",
-          args: ["-y", "--registry=http://registry.example/", "@wangs-ui/mcp@1.0.64"],
-        });
+        expect(config?.type).toBe("stdio");
+        expect(config && "command" in config ? config.command : undefined).toBe("npx");
+        expect(config && "args" in config ? config.args : undefined).toEqual(["-y", "--registry=http://registry.example/", "@wangs-ui/mcp@1.0.64"]);
+        // Fast-fail env — a stdio server that hangs trying to reach a dead registry blocks the
+        // WHOLE session (confirmed via a real SDK repro), unlike an unreachable HTTP server which
+        // fails fast and non-blocking. These make npx give up in ~3s instead of hanging.
+        const env = config && "env" in config ? config.env : undefined;
+        expect(env?.npm_config_fetch_timeout).toBe("3000");
+        expect(env?.npm_config_fetch_retries).toBe("0");
       } finally {
         rmSync(tempDir, { recursive: true, force: true });
         if (prev !== undefined) {

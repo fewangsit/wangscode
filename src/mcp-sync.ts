@@ -381,14 +381,36 @@ export function getMcpTargetRegistry(cwd: string): string | undefined {
  * it as a real child process itself, no file involved. Returns null (server simply omitted, same
  * as those other two when unused) when `@wangs-ui/*` isn't installed in this project.
  */
+// Confirmed via a real SDK session (not assumed): unlike an unreachable HTTP MCP server, which
+// fails fast and non-blocking (the session still starts, that server just shows "failed"), a stdio
+// server whose spawn command hangs — `npx` retrying against a dead registry with npm's own default
+// fetch timeout/retry backoff — blocks the WHOLE session indefinitely. A real repro against this
+// registry down (192.168.1.102:4873 was actually unreachable when this was found) never even
+// produced the session's own `init` message within 30s. These env vars make npm give up in ~3s
+// instead, which is enough for the session to start normally with wangs-ui simply marked "failed" —
+// verified: the same repro with these vars set reaches `init` at ~7s with `wangs-ui` correctly
+// "failed", and the turn completes normally.
+const NPX_FAST_FAIL_ENV: Record<string, string> = {
+  npm_config_fetch_timeout: "3000",
+  npm_config_fetch_retries: "0",
+  npm_config_fetch_retry_mintimeout: "500",
+  npm_config_fetch_retry_maxtimeout: "1000",
+};
+
 export function resolveWangsUiMcpServer(cwd: string): McpServerConfig | null {
   const info = detectProjectWangsUiVersion(cwd);
   if (!info) return null;
 
   const registry = getMcpTargetRegistry(cwd);
+  // McpStdioServerConfig spawns without inheriting the parent process's env unless it's passed
+  // explicitly (confirmed by mcp-tools.ts's own fetchStdioMcpTools doing the same) — filter out
+  // undefined values first since process.env's type allows them but Record<string, string> doesn't.
+  const parentEnv = Object.fromEntries(Object.entries(process.env).filter((entry): entry is [string, string] => entry[1] !== undefined));
+
   return {
     type: "stdio",
     command: "npx",
     args: ["-y", ...(registry ? [`--registry=${registry}`] : []), `@wangs-ui/mcp@${info.version}`],
+    env: { ...parentEnv, ...NPX_FAST_FAIL_ENV },
   };
 }
