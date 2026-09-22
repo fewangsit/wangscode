@@ -32,20 +32,40 @@ export interface ClarificationRecord {
 }
 
 export interface RequirementBundle {
-  overview: string;
-  uiDesign: string;
-  functional: string;
+  /**
+   * Full text of the feature's single-file PRD (`prd-single-file-convention.md`
+   * — Overview/Aturan Logika Modul/Personas/UI Design/Functional/etc. all in
+   * one document, not split). Embedded whole, never section-parsed: the
+   * convention's own SSOT section ("Aturan Logika Modul") is referenced by
+   * ID from half the other sections without restating it, so extracting only
+   * some sections would silently drop context those sections depend on — the
+   * org's own `check-8-sumbu.py` audit tool makes the same choice (keyword
+   * search over the whole body, never per-section).
+   */
+  prd: string;
+  /**
+   * Combined text of every Test Case file for this feature — real modules
+   * split this into a main file plus FE-only/BE-only variants (e.g.
+   * `tc-user.md` + `tc-user-frontend.md` + `tc-user-backend.md`), not one
+   * file. Each source is labeled by path in the combined text (see
+   * requirements-phase.ts's `extract`), so scenarios stay attributable.
+   */
   testCases: string;
-  /** Kept for the `// Source: <method> <path> — openapi.yaml` comment convention (see data-sources.md), not for re-reading — see `openApiContent`. */
-  openApiPath: string;
-  /** The spec's full raw text — embedded like the other four docs, so the gap-check phase (which gets no tools) can actually cross-reference it instead of only seeing a path it cannot read. */
+  /** Paths of every API spec/LLD file that fed `openApiContent` — kept for `// Source: <path>` comments (see data-sources.md) and citations, not for re-reading. */
+  openApiPaths: string[];
+  /**
+   * Combined text of every API doc for this feature — real modules split
+   * this per endpoint-group into paired `.yaml` (OpenAPI) and `.md` (LLD:
+   * RBAC, SQL, derived/computed fields the raw OpenAPI schema doesn't show)
+   * files, not one `openapi.yaml`. Both kinds are accepted and concatenated
+   * here, each labeled by path — the LLD text matters for data-layer/connect
+   * phases just as much as the OpenAPI schema does.
+   */
   openApiContent: string;
   clarifications: ClarificationRecord[];
   sourcePaths: {
-    overview: string;
-    uiDesign: string;
-    functional: string;
-    testCase: string;
+    prd: string;
+    testCases: string[];
   };
 }
 
@@ -89,11 +109,9 @@ export interface PipelineArtifacts {
 export type PipelineStatus = "running" | "needs_input" | "completed" | "failed";
 
 export interface RequirementDocPaths {
-  overview: string;
-  uiDesign: string;
-  functional: string;
-  testCase: string;
-  openapi: string;
+  prd: string;
+  testCase: string[];
+  openapi: string[];
 }
 
 export interface PipelineState {
@@ -124,11 +142,12 @@ export interface FeatureBuildArgs {
   featureSlug: string;
   /** The target Wangs Foundation project's root — always resolved by the caller, never defaulted here. */
   project: string;
-  overview?: string;
-  uiDesign?: string;
-  functional?: string;
-  testCase?: string;
-  openapi?: string;
+  /** Absolute path to the feature's single-file PRD (`PRD/{feature-name}.md`). */
+  prd?: string;
+  /** Absolute paths — one or more Test Case files (main + FE/BE variants, if the module splits them). */
+  testCase?: string[];
+  /** Absolute paths — one or more API spec/LLD files (real modules pair a `.yaml` + `.md` per endpoint group). */
+  openapi?: string[];
   mode: Mode;
   resume: boolean;
   answer?: string;

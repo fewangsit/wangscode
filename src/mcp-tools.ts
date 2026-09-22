@@ -35,19 +35,24 @@ const WANGS_FEATURE_BUILD_TOOLS: McpTool[] = [
   {
     name: "create_feature",
     description:
-      "Build a Wangs Foundation feature end-to-end (requirements -> data-layer -> test-contract -> ui-slice -> connect -> e2e-run -> lint -> review) via the real, gated feature-build pipeline. Call this ONLY when the user has confirmed a feature slug and has all five source documents (overview, ui-design, functional, test-case, openapi) ready as absolute file paths. Never attempt to build the feature yourself — writing the files or judging a phase 'done' yourself defeats the entire point of this tool. After calling it, relay the result's pendingQuestion/status to the user verbatim; do not paraphrase or second-guess it.",
+      "Build a Wangs Foundation feature end-to-end (requirements -> data-layer -> test-contract -> ui-slice -> connect -> e2e-run -> lint -> review) via the real, gated feature-build pipeline. Call this ONLY when the user has confirmed a feature slug and has all three source document sets (the single-file PRD, test-case file(s), API spec/LLD file(s)) ready as absolute file paths. Never attempt to build the feature yourself — writing the files or judging a phase 'done' yourself defeats the entire point of this tool. After calling it, relay the result's pendingQuestion/status to the user verbatim; do not paraphrase or second-guess it.",
     inputSchema: {
       type: "object",
       properties: {
         featureSlug: { type: "string", description: "kebab-case feature slug, e.g. audit-tag" },
-        overview: { type: "string", description: "absolute path to Overview.md" },
-        uiDesign: { type: "string", description: "absolute path to UI Design.md" },
-        functional: { type: "string", description: "absolute path to Functionality.md" },
-        testCase: { type: "string", description: "absolute path to the Test Case .md" },
-        openapi: { type: "string", description: "absolute path to openapi.yaml" },
+        prd: { type: "string", description: "absolute path to the feature's single-file PRD (PRD/<feature-name>.md, prd-single-file-convention.md)" },
+        testCase: {
+          type: "array",
+          description: "absolute path(s) to the Test Case file(s) — main file plus FE/BE variants if the module splits them",
+        },
+        openapi: {
+          type: "array",
+          description:
+            "absolute path(s) to API spec/LLD file(s) — real modules pair a .yaml (OpenAPI) with a .md (RBAC/SQL/derived-field logic) per endpoint group",
+        },
         mode: { type: "string", description: "interactive or auto", enum: ["interactive", "auto"] },
       },
-      required: ["featureSlug", "overview", "uiDesign", "functional", "testCase", "openapi"],
+      required: ["featureSlug", "prd", "testCase", "openapi"],
     },
   },
 ];

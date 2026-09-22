@@ -3,10 +3,12 @@
 // plain host code (state, gates, routing) — see docs/ + the architecture
 // doc this implements for why that split matters: control flow must live in
 // code the model cannot talk its way around.
-import { query, type Options } from "@anthropic-ai/claude-agent-sdk";
+import { query, SYSTEM_PROMPT_DYNAMIC_BOUNDARY, type Options } from "@anthropic-ai/claude-agent-sdk";
 
+import { DOCS_KNOWLEDGE_MCP_SERVERS } from "../docs-knowledge.ts";
 import { PRIMARY_RULES } from "../primary-rules.ts";
 import { WANGS_SUBAGENTS } from "../subagents.ts";
+import { PIPELINE_SYSTEM_PREAMBLE } from "./system-prompt.ts";
 
 export interface RunAgentTurnParams {
   repoRoot: string;
@@ -14,6 +16,15 @@ export interface RunAgentTurnParams {
   allowedTools: string[];
   outputFormat?: { type: "json_schema"; schema: Record<string, unknown> };
   model?: string;
+  /**
+   * Identical text across every phase turn in one feature-build run (today:
+   * the RequirementBundle — see prompts.ts's buildCacheableContext). Placed
+   * before SYSTEM_PROMPT_DYNAMIC_BOUNDARY in `systemPrompt` so the SDK marks
+   * it eligible for prompt caching, instead of pasting it fresh into `prompt`
+   * on every one of the 5+ model-calling phases like before. Omit for turns
+   * with no such shared content (review has none today).
+   */
+  cacheablePrefix?: string;
 }
 
 export interface AgentTurnResult {
@@ -34,13 +45,28 @@ export async function runAgentTurn(params: RunAgentTurnParams): Promise<AgentTur
     // harmless for every other phase and keeps this one place in sync with
     // subagents.ts instead of re-deciding per phase.
     agents: WANGS_SUBAGENTS,
-    // Previously absent entirely — every phase turn ran on the SDK's bare
-    // default system prompt, so PRIMARY_RULES (architecture + coding
-    // discipline, not a discoverable skill: see primary-rules.ts) never
-    // actually reached the phases that write React/TypeScript code
-    // (data-layer, test-contract, ui-slice, connect, review). Harmless on
-    // the tool-less gap-check turn.
-    systemPrompt: { type: "preset", preset: "claude_code", append: PRIMARY_RULES },
+    // Only reachable when the caller's allowedTools actually lists one of
+    // DOCS_KNOWLEDGE_TOOLS (see run-build-feature.ts's PHASE_TOOL_ALLOWLIST
+    // and requirements-phase.ts's gap-check) — registering it unconditionally
+    // here is harmless for phases that don't list those tools, same
+    // reasoning as `agents` above.
+    mcpServers: DOCS_KNOWLEDGE_MCP_SERVERS,
+    // `type: "custom"` instead of the SDK's "claude_code" preset — needed to
+    // place SYSTEM_PROMPT_DYNAMIC_BOUNDARY at all (the preset's own `append`
+    // is a plain string, no boundary support). PIPELINE_SYSTEM_PREAMBLE
+    // carries what the preset's own text actually contributes to a headless
+    // tool-using turn (see system-prompt.ts for what was captured vs.
+    // deliberately dropped) — tool *definitions* are unaffected either way,
+    // confirmed via a real captured request: they travel in the API's
+    // `tools` field, never baked into `system` text. PRIMARY_RULES (same as
+    // before) and, when given, cacheablePrefix (new — see this file's
+    // RunAgentTurnParams) sit before the boundary so the SDK marks that
+    // whole prefix eligible for cross-call prompt caching; the actual
+    // phase-specific ask still goes in `prompt` below, unchanged.
+    systemPrompt: {
+      type: "custom",
+      prompt: [PIPELINE_SYSTEM_PREAMBLE, PRIMARY_RULES, ...(params.cacheablePrefix ? [params.cacheablePrefix] : []), SYSTEM_PROMPT_DYNAMIC_BOUNDARY],
+    },
     // Headless CLI orchestrator — there is no terminal for interactive
     // approval prompts. The real safety boundary is `allowedTools` above,
     // scoped per phase by the caller (see run.ts's PHASE_TOOL_ALLOWLIST).

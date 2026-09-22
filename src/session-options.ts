@@ -8,6 +8,7 @@ import type { FeatureBuildController } from "./slash-commands.ts";
 import { createFeatureBuildMcpServer } from "./feature-build-tool.ts";
 import { WANGS_SUBAGENTS } from "./subagents.ts";
 import { PACKAGE_ROOT } from "./package-root.ts";
+import { DOCS_KNOWLEDGE_MCP_SERVERS, DOCS_KNOWLEDGE_USAGE_NOTE } from "./docs-knowledge.ts";
 
 const WANGS_PLUGIN_ROOT = path.join(PACKAGE_ROOT, "wangs-plugin");
 
@@ -47,6 +48,7 @@ export function buildSessionOptions(
     tools: { type: "preset", preset: "claude_code" },
     mcpServers: {
       "wangs-feature-build": createFeatureBuildMcpServer(featureBuildController),
+      ...DOCS_KNOWLEDGE_MCP_SERVERS,
     },
     // Project-specific skills bundled inside wangs-code itself (see
     // wangs-plugin/) — a consumer repo needs zero .claude/skills config for
@@ -63,7 +65,7 @@ export function buildSessionOptions(
     systemPrompt: {
       type: "preset",
       preset: "claude_code",
-      append: `${WANGS_PERSONA_APPEND}\n\n${PRIMARY_RULES}`,
+      append: `${WANGS_PERSONA_APPEND}\n\n${PRIMARY_RULES}\n\n${DOCS_KNOWLEDGE_USAGE_NOTE}`,
       snapshot: true,
     },
     // Interactive terminal, a human is present — canUseTool prompts them

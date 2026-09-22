@@ -4,11 +4,12 @@ import type { PendingFeatureBuild } from "./types.ts";
 
 export interface FeatureBuildStartArgs {
   featureSlug: string;
-  overview: string;
-  uiDesign: string;
-  functional: string;
-  testCase: string;
-  openapi: string;
+  /** Absolute path to the feature's single-file PRD (`PRD/{feature-name}.md`, prd-single-file-convention.md). */
+  prd: string;
+  /** One or more Test Case files (main + FE/BE variants, if the module splits them). */
+  testCase: string[];
+  /** One or more API spec/LLD files (real modules pair a `.yaml` + `.md` per endpoint group). */
+  openapi: string[];
   mode?: "interactive" | "auto";
 }
 
@@ -110,15 +111,22 @@ export class FeatureBuildController {
     return line.trim();
   }
 
+  /** Splits a comma-separated answer into trimmed, non-empty paths — real modules pass several Test Case / API spec files, not one. */
+  private async askPaths(question: string): Promise<string[]> {
+    const line = await this.ask(question);
+    return line
+      .split(",")
+      .map((p) => p.trim())
+      .filter(Boolean);
+  }
+
   private async runInteractivePrompt(print: (text: string) => void): Promise<void> {
     const featureSlug = await this.ask("Feature slug (kebab-case): ");
-    const overview = await this.ask("Path ke Overview.md: ");
-    const uiDesign = await this.ask("Path ke UI Design.md: ");
-    const functional = await this.ask("Path ke Functionality.md: ");
-    const testCase = await this.ask("Path ke Test Case .md: ");
-    const openapi = await this.ask("Path ke openapi.yaml: ");
+    const prd = await this.ask("Path ke PRD (single-file, PRD/<feature-name>.md): ");
+    const testCase = await this.askPaths("Path ke Test Case .md (pisahkan koma kalau lebih dari satu file): ");
+    const openapi = await this.askPaths("Path ke API spec/LLD (.yaml dan/atau .md, pisahkan koma kalau lebih dari satu file): ");
     print("\nMenjalankan feature-build pipeline...\n");
-    const result = await this.start({ featureSlug, overview, uiDesign, functional, testCase, openapi });
+    const result = await this.start({ featureSlug, prd, testCase, openapi });
     print(renderResult(result));
   }
 

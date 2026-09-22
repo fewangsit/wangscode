@@ -1,20 +1,34 @@
+import { DOCS_KNOWLEDGE_USAGE_NOTE } from "../docs-knowledge.ts";
 import { readSkill, readSkillSection } from "./skill-content.ts";
 import type { PageObjectContract, PhaseName, RequirementBundle } from "./types.ts";
 
-function bundleBlock(bundle: RequirementBundle): string {
+/**
+ * Identical across every model-calling phase for one feature (requirements
+ * never change mid-build). Handed to agent-runner.ts as `cacheablePrefix` —
+ * placed in `systemPrompt` before SYSTEM_PROMPT_DYNAMIC_BOUNDARY — instead of
+ * being pasted into each phase's own `prompt` string as before, so it's sent
+ * as a cacheable prefix once instead of billed fresh on every phase call.
+ * Exported (not phase-prompt-local) so run-build-feature.ts and
+ * requirements-phase.ts can build it once per call site.
+ */
+export function buildCacheableContext(bundle: RequirementBundle): string {
   return [
     "## RequirementBundle (authoritative — do not re-read the source docs, this IS their content)",
     "",
-    `### Overview\n${bundle.overview}`,
-    `### UI Design\n${bundle.uiDesign}`,
-    `### Functional\n${bundle.functional}`,
+    // The PRD is a single-file document per prd-single-file-convention.md —
+    // embedded whole, never split into sub-sections. Its own "Aturan Logika
+    // Modul" (SSOT) section is referenced by ID from most of the other
+    // sections without restating the rule text, so a partial extract would
+    // silently drop context those sections depend on.
+    `### PRD (single-file — Overview, Aturan Logika Modul, Personas, User Flow, UI Design, Functional Requirements, etc. all included)\n${bundle.prd}`,
     `### Test Cases\n${bundle.testCases}`,
-    `### OpenAPI Spec (${bundle.openApiPath})\n${bundle.openApiContent}`,
+    `### API Specs / LLD Docs (${bundle.openApiPaths.join(", ")})\n${bundle.openApiContent}`,
     bundle.clarifications.length > 0
       ? `### Clarifications (resolved ambiguities — treat as ground truth)\n${bundle.clarifications
           .map((c) => `- Q: ${c.question}\n  A: ${c.answer}`)
           .join("\n")}`
       : "",
+    DOCS_KNOWLEDGE_USAGE_NOTE,
   ]
     .filter(Boolean)
     .join("\n\n");
@@ -28,9 +42,9 @@ ${readSkillSection("feature-workflow", "Cross-Layer Contracts (Mandatory)")}
 ---
 
 Feature: "${featureSlug}" at packages/features/${featureSlug}/
-OpenAPI spec: ${bundle.openApiPath}
+API spec(s): ${bundle.openApiPaths.join(", ")}
 
-${bundleBlock(bundle)}
+The RequirementBundle (the single-file PRD, Test Cases, OpenAPI spec, Clarifications) is already in your system prompt, above the cache boundary — do not ask for it again, it's the same content that was pasted inline here before.
 
 Generate:
 - data/dto/index.ts — types matching the OpenAPI spec exactly, one \`// Source: <method> <path> — openapi.yaml\` comment per type. The DTO IS the entity type — do not create a separate model/entity file (see the architecture-overview rule already in context).
@@ -39,7 +53,7 @@ Generate:
 Stop when the files are written. Do not run the type-checker yourself — the orchestrator runs it after you finish. Test fixtures belong to the next phase (test-contract), not this one — do not write anything under e2e/ here.`;
 }
 
-export function buildTestContractPrompt(featureSlug: string, bundle: RequirementBundle): string {
+export function buildTestContractPrompt(featureSlug: string): string {
   return `${readSkillSection("feature-workflow", "Step 2 — Test Contract")}
 
 ${readSkillSection("feature-workflow", "Cross-Layer Contracts (Mandatory)")}
@@ -53,7 +67,7 @@ ${readSkill("component-spliting")}
 Feature: "${featureSlug}" — its E2E project lives at packages/features/${featureSlug}/e2e/ (a project
 of its own, separate from the feature library package).
 
-${bundleBlock(bundle)}
+The RequirementBundle (the single-file PRD, Test Cases, OpenAPI spec, Clarifications) is already in your system prompt, above the cache boundary.
 
 Write, following TestSpectra's real Nx-monorepo convention exactly:
 
@@ -115,7 +129,7 @@ After writing the files, respond with ONLY the JSON object described by the outp
 selector contract for the primary screen you just authored. No prose, no markdown fences.`;
 }
 
-export function buildUiSlicePrompt(featureSlug: string, bundle: RequirementBundle, contract: PageObjectContract): string {
+export function buildUiSlicePrompt(featureSlug: string, contract: PageObjectContract): string {
   return `${readSkillSection("feature-workflow", "Step 3 — UI Slice")}
 
 ${readSkillSection("feature-workflow", "Cross-Layer Contracts (Mandatory)")}
@@ -132,7 +146,7 @@ ${readSkill("component-spliting")}
 
 Feature: "${featureSlug}" at packages/features/${featureSlug}/
 
-${bundleBlock(bundle)}
+The RequirementBundle (the single-file PRD, Test Cases, OpenAPI spec, Clarifications) is already in your system prompt, above the cache boundary.
 
 ## Page Object contract this UI MUST satisfy (from the test-contract phase)
 ${JSON.stringify(contract, null, 2)}
@@ -148,7 +162,7 @@ Write:
 Stop when the files are written. Do not grep for the selectors yourself — the orchestrator verifies the contract after you finish.`;
 }
 
-export function buildConnectPrompt(featureSlug: string, bundle: RequirementBundle): string {
+export function buildConnectPrompt(featureSlug: string): string {
   return `${readSkillSection("feature-workflow", "Step 4 — Connect")}
 
 ${readSkillSection("feature-workflow", "Cross-Layer Contracts (Mandatory)")}
@@ -157,7 +171,7 @@ ${readSkillSection("feature-workflow", "Cross-Layer Contracts (Mandatory)")}
 
 Feature: "${featureSlug}" at packages/features/${featureSlug}/
 
-${bundleBlock(bundle)}
+The RequirementBundle (the single-file PRD, Test Cases, OpenAPI spec, Clarifications) is already in your system prompt, above the cache boundary.
 
 Wire the ViewModel(s) under ui/screens/*/ to the real DataSource functions from data/: real fetch call, \`isLoading\` via useState, errors mapped to \`errorMessage: string | null\`. DataSource is imported only from the ViewModel, never the View. No platform-specific import (\`@wangs-ui/react-core\`, \`react-native\`, etc.) may appear in a ViewModel file.
 
@@ -175,15 +189,13 @@ Report ONLY — do not fix anything. Respond with ONLY the JSON object described
 }
 
 export function buildGapCheckPrompt(bundle: RequirementBundle): string {
-  return `You are auditing a feature's requirement documents for internal consistency BEFORE any code is written. You do not have file tools — everything you need is below.
+  return `You are auditing a feature's requirement documents for internal consistency BEFORE any code is written. You do not have file tools — the RequirementBundle (the single-file PRD, Test Cases, OpenAPI spec, Clarifications) is already in your system prompt, above the cache boundary; everything you need is there.
 
-${bundleBlock(bundle)}
-
-Cross-reference the four sections above against each other. Flag:
-- A field/scenario in Test Cases that has no corresponding element in UI Design
-- An edge case in Functional with no explanation in UI Design
-- A field in the OpenAPI spec path (${bundle.openApiPath}) not mentioned in any other section, or vice versa
-- Any direct contradiction between two sections
+Cross-reference the PRD's own sections (Overview, UI Design §4, Functional Requirements §9, etc.) against Test Cases and the OpenAPI spec. Flag:
+- A field/scenario in Test Cases that has no corresponding element in the PRD's UI Design section
+- An edge case in the PRD's Functional Requirements with no explanation in its UI Design section
+- A field in an API spec/LLD doc (${bundle.openApiPaths.join(", ")}) not mentioned anywhere in the PRD, or vice versa
+- Any direct contradiction between the PRD, Test Cases, or the OpenAPI spec
 
 Respond with ONLY the JSON object described by the output schema. Empty \`gaps\` array if the documents are consistent — do not invent a gap to have something to report.`;
 }
@@ -199,12 +211,12 @@ export function buildPhasePrompt(
     case "data-layer":
       return buildDataLayerPrompt(featureSlug, bundle, scope);
     case "test-contract":
-      return buildTestContractPrompt(featureSlug, bundle);
+      return buildTestContractPrompt(featureSlug);
     case "ui-slice":
       if (!contract) throw new Error("ui-slice prompt requires the test-contract phase's PageObjectContract");
-      return buildUiSlicePrompt(featureSlug, bundle, contract);
+      return buildUiSlicePrompt(featureSlug, contract);
     case "connect":
-      return buildConnectPrompt(featureSlug, bundle);
+      return buildConnectPrompt(featureSlug);
     case "review":
       return buildReviewPrompt(featureSlug);
     default:

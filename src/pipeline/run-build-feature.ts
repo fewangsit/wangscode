@@ -12,10 +12,11 @@
 import path from "node:path";
 
 import { runAgentTurn } from "./agent-runner.ts";
+import { DOCS_KNOWLEDGE_TOOLS } from "../docs-knowledge.ts";
 import { classifyLintFailure, classifyReviewFinding } from "./bug-routing.ts";
 import { runGate } from "./gates.ts";
 import { detectPackageScope } from "./project-conventions.ts";
-import { buildPhasePrompt } from "./prompts.ts";
+import { buildCacheableContext, buildPhasePrompt } from "./prompts.ts";
 import { runRequirementsPhase } from "./requirements-phase.ts";
 import { pageObjectContractJsonSchema, pageObjectContractZod, reviewFindingsJsonSchema, reviewFindingsZod } from "./schemas.ts";
 import { initState, loadState, saveState } from "./state.ts";
@@ -37,15 +38,21 @@ const CODE_PHASES: readonly Exclude<PhaseName, "requirements">[] = PHASES.filter
   (p): p is Exclude<PhaseName, "requirements"> => p !== "requirements",
 );
 
+// DOCS_KNOWLEDGE_TOOLS (../docs-knowledge.ts) let a phase resolve a PRD's own
+// cross-reference to a sibling module's spec ("detail: role/PRD/role.md §8.2")
+// instead of guessing — added to every phase that reads the RequirementBundle
+// (see prompts.ts's buildCacheableContext, which is where the model is told
+// to use them). Not given to `review`: it never receives the bundle, its job
+// is checking generated code against the slicing-review skill, not PRDs.
 const PHASE_TOOL_ALLOWLIST: Record<(typeof MODEL_PHASES)[number], string[]> = {
-  "data-layer": ["Read", "Write", "Edit", "Glob", "Grep", "Bash"],
-  "test-contract": ["Read", "Write", "Edit", "Glob", "Grep"],
+  "data-layer": ["Read", "Write", "Edit", "Glob", "Grep", "Bash", ...DOCS_KNOWLEDGE_TOOLS],
+  "test-contract": ["Read", "Write", "Edit", "Glob", "Grep", ...DOCS_KNOWLEDGE_TOOLS],
   // "Agent" is the real SDK tool name for subagent dispatch (verified against
   // a live session reporting its own tool list) — wangs-ui-querier itself is
   // registered programmatically via agent-runner.ts's Options.agents (see
   // ../subagents.ts), not read from any file in the target project.
-  "ui-slice": ["Read", "Write", "Edit", "Glob", "Grep", "Agent"],
-  connect: ["Read", "Write", "Edit", "Glob", "Grep"],
+  "ui-slice": ["Read", "Write", "Edit", "Glob", "Grep", "Agent", ...DOCS_KNOWLEDGE_TOOLS],
+  connect: ["Read", "Write", "Edit", "Glob", "Grep", ...DOCS_KNOWLEDGE_TOOLS],
   review: ["Read", "Glob", "Grep"],
 };
 
@@ -110,11 +117,15 @@ async function runOnePhase(
     outputFormat = { type: "json_schema", schema: reviewFindingsJsonSchema };
   }
 
+  // Same bundle text on every model-calling phase for this feature — sent as
+  // a cacheable systemPrompt prefix (see agent-runner.ts) instead of pasted
+  // into `prompt` fresh each time.
   const turn = await runAgentTurn({
     repoRoot: ctx.repoRoot,
     prompt,
     allowedTools: PHASE_TOOL_ALLOWLIST[phase],
     outputFormat,
+    cacheablePrefix: buildCacheableContext(bundle),
   });
 
   if (!turn.ok) {
@@ -167,14 +178,14 @@ export async function runFeatureBuildPipeline(args: FeatureBuildArgs): Promise<F
   // feature — every later resume call (including through the gap-check
   // clarify loop) reuses state.docPaths, persisted here.
   if (!state.docPaths) {
-    const { overview, uiDesign, functional, testCase, openapi } = args;
-    if (!overview || !uiDesign || !functional || !testCase || !openapi) {
+    const { prd, testCase, openapi } = args;
+    if (!prd || !testCase?.length || !openapi?.length) {
       throw new Error(
-        "First call for a feature needs overview, uiDesign, functional, testCase, and openapi paths. " +
+        "First call for a feature needs prd, testCase (at least one path), and openapi (at least one path). " +
           "Later resume calls don't need them again — they're persisted in .feature-build/<slug>/state.json.",
       );
     }
-    state.docPaths = { overview, uiDesign, functional, testCase, openapi };
+    state.docPaths = { prd, testCase, openapi };
     saveState(repoRoot, args.featureSlug, state);
   }
 

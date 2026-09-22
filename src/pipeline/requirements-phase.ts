@@ -1,38 +1,42 @@
 import fs from "node:fs";
 
 import { runAgentTurn } from "./agent-runner.ts";
-import { buildGapCheckPrompt } from "./prompts.ts";
+import { DOCS_KNOWLEDGE_TOOLS } from "../docs-knowledge.ts";
+import { buildCacheableContext, buildGapCheckPrompt } from "./prompts.ts";
 import { gapReportJsonSchema, gapReportZod } from "./schemas.ts";
 import type { ClarificationRecord, GapReport, PipelineContext, PipelineState, RequirementBundle } from "./types.ts";
 
 /**
  * Deliberate simplification vs. the original design doc: "extract" (1a) does
- * NOT call the model at all. Reading four files given by path is plain file
- * I/O — dedicated reader subagents exist to protect an interactive session's
+ * NOT call the model at all. Reading files given by path is plain file I/O —
+ * dedicated reader subagents exist to protect an interactive session's
  * context window, which is not a concern here (nothing re-reads these files
  * later; the full text is embedded once into every subsequent phase prompt).
  * Skipping a model call here is strictly more reliable, not a shortcut.
  *
  * Reads paths from `state.docPaths` (set once on the feature's first
  * invocation — see run-build-feature.ts) rather than `ctx.args` directly, so
- * a `--resume --answer=...` call during the gap-check loop never needs
- * --overview/--ui-design/etc. re-passed.
+ * a `--resume --answer=...` call during the gap-check loop never needs --prd
+ * etc. re-passed.
  */
+/** Reads and concatenates several files, each under its own path-labeled heading, so a scenario/field stays attributable to the specific file it came from. */
+function readMany(paths: string[]): string {
+  return paths.map((p) => `--- ${p} ---\n${fs.readFileSync(p, "utf8")}`).join("\n\n");
+}
+
 function extract(state: PipelineState, clarifications: ClarificationRecord[]): RequirementBundle {
   const docPaths = state.docPaths;
   if (!docPaths) {
     throw new Error("unreachable: state.docPaths must be set before the requirements phase runs — see run-build-feature.ts");
   }
-  const { overview, uiDesign, functional, testCase, openapi } = docPaths;
+  const { prd, testCase, openapi } = docPaths;
   return {
-    overview: fs.readFileSync(overview, "utf8"),
-    uiDesign: fs.readFileSync(uiDesign, "utf8"),
-    functional: fs.readFileSync(functional, "utf8"),
-    testCases: fs.readFileSync(testCase, "utf8"),
-    openApiPath: openapi,
-    openApiContent: fs.readFileSync(openapi, "utf8"),
+    prd: fs.readFileSync(prd, "utf8"),
+    testCases: readMany(testCase),
+    openApiPaths: openapi,
+    openApiContent: readMany(openapi),
     clarifications,
-    sourcePaths: { overview, uiDesign, functional, testCase },
+    sourcePaths: { prd, testCases: testCase },
   };
 }
 
@@ -40,8 +44,14 @@ async function gapCheck(ctx: PipelineContext, bundle: RequirementBundle): Promis
   const result = await runAgentTurn({
     repoRoot: ctx.repoRoot,
     prompt: buildGapCheckPrompt(bundle),
-    allowedTools: [], // pure analysis over text already in the prompt — no tools needed
+    // No file tools — gap-check reasons over text already in the system
+    // prompt, never the target repo. DOCS_KNOWLEDGE_TOOLS is the one
+    // exception: this is exactly the phase where a PRD's own cross-reference
+    // to a sibling module ("detail: role/PRD/role.md §8.2") most needs
+    // resolving before flagging something as a gap that isn't actually one.
+    allowedTools: DOCS_KNOWLEDGE_TOOLS,
     outputFormat: { type: "json_schema", schema: gapReportJsonSchema },
+    cacheablePrefix: buildCacheableContext(bundle),
   });
   if (!result.ok) {
     throw new Error(`gap-check turn failed: ${result.errors?.join("; ") ?? result.resultText}`);
