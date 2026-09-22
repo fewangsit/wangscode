@@ -18,6 +18,7 @@ import { runGate } from "./gates.ts";
 import { detectPackageScope } from "./project-conventions.ts";
 import { buildCacheableContext, buildPhasePrompt } from "./prompts.ts";
 import { runRequirementsPhase } from "./requirements-phase.ts";
+import { scaffoldFeaturePackage } from "./scaffold.ts";
 import { pageObjectContractJsonSchema, pageObjectContractZod, reviewFindingsJsonSchema, reviewFindingsZod } from "./schemas.ts";
 import { initState, loadState, saveState } from "./state.ts";
 import {
@@ -164,6 +165,12 @@ export async function runFeatureBuildPipeline(args: FeatureBuildArgs): Promise<F
   const repoRoot = path.resolve(args.project);
   const scope = detectPackageScope(repoRoot);
   const ctx: PipelineContext = { repoRoot, scope, args };
+
+  // Deterministic, zero-model-call, and unconditional on every call (including resumes) — see
+  // scaffold.ts. Package-skeleton creation used to be a separate manual `pnpm create-feature`
+  // step run before wangs-code at all; folding it in here means /create-feature is the one real
+  // entry point. Idempotent: a no-op once packages/features/<slug>/ already exists.
+  scaffoldFeaturePackage(repoRoot, scope, args.featureSlug);
 
   const state = args.resume
     ? loadState(repoRoot, args.featureSlug)
