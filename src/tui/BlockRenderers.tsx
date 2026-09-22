@@ -462,5 +462,13 @@ export function renderBlock(block: ChatBlock, syntaxStyle: SyntaxStyle): React.R
       return <markdown key={block.id} content={block.text} syntaxStyle={syntaxStyle} style={{ marginBottom: 1, fg: ROLE_COLOR.host }} />;
     case "footer":
       return <text key={block.id} content={block.text} style={{ fg: ROLE_COLOR.footer, marginBottom: 1 }} />;
+    case "turn-complete":
+      return (
+        <text
+          key={block.id}
+          content={`✻ Worked for ${formatElapsed(Math.round(block.durationMs / 1000))}`}
+          style={{ fg: "#565f89", marginBottom: 1 }}
+        />
+      );
   }
 }

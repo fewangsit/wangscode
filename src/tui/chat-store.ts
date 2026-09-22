@@ -19,7 +19,12 @@ export type ChatBlock =
   | { id: number; kind: "thinking"; text: string; streaming: boolean }
   | ToolCallBlock
   | { id: number; kind: "host"; text: string }
-  | { id: number; kind: "footer"; text: string };
+  | { id: number; kind: "footer"; text: string }
+  /** A permanent "✻ Worked for Xs" marker for one finished turn — pushed by `endTurn()` below, not
+   *  a transient toast (see that method's comment for why). Also reconstructed from a resumed
+   *  session's real message timestamps in render.ts's `convertSessionMessagesToBlocks`, so it
+   *  survives a full app restart the same way Claude Code's own transcript does. */
+  | { id: number; kind: "turn-complete"; durationMs: number };
 
 type StreamingKind = "assistant" | "thinking";
 
@@ -95,9 +100,17 @@ export class ChatStore {
     this.waitingStore.set(false);
   }
 
-  /** Call once the turn has genuinely finished (no longer waiting, nothing streaming, no tool running) — see App.tsx's `isStreaming` transition to false. */
+  /** Call once the turn has genuinely finished (no longer waiting, nothing streaming, no tool
+   *  running) — see App.tsx's `isStreaming` transition to false. Pushes a permanent
+   *  `turn-complete` block (not a 4-second toast that vanished for good once you closed the app —
+   *  Claude Code itself keeps this line in the transcript, so wangs-code should too) recording how
+   *  long the turn actually took, using `turnStore`'s own `startedAt` before clearing it. */
   endTurn(): void {
+    const turn = this.turnStore.get();
     this.turnStore.set(null);
+    if (turn) {
+      this.push({ id: this.nextId++, kind: "turn-complete", durationMs: Math.max(0, Date.now() - turn.startedAt) });
+    }
   }
 
   appendAssistantDelta(delta: string): void {

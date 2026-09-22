@@ -1231,21 +1231,16 @@ export function App({
   );
 
   // Once a turn genuinely ends (isStreaming false-going-edge, not just re-rendering while already
-  // idle), close it out: capture how long it actually took for a brief "✻ Worked for Xs" note
-  // (matching Claude Code's own completion line), then clear chatStore's turnStore so the next
-  // turn starts its own fresh timer/token count instead of accumulating across turns.
+  // idle), close it out: `chatStore.endTurn()` clears `turnStore` AND pushes a permanent
+  // "✻ Worked for Xs" block into the transcript itself (see chat-store.ts) — not a local toast
+  // that would vanish the moment you scrolled away or closed the app, matching how Claude Code
+  // keeps this line in the transcript for good.
   const wasStreamingRef = useRef(false);
-  const [justFinishedSeconds, setJustFinishedSeconds] = useState<number | null>(null);
   useEffect(() => {
     if (wasStreamingRef.current && !isStreaming && turn) {
-      setJustFinishedSeconds(Math.max(0, Math.round((Date.now() - turn.startedAt) / 1000)));
       chatStore.endTurn();
-      const timer = setTimeout(() => setJustFinishedSeconds(null), 4000);
-      wasStreamingRef.current = isStreaming;
-      return () => clearTimeout(timer);
     }
     wasStreamingRef.current = isStreaming;
-    return undefined;
   }, [isStreaming, turn, chatStore]);
 
   const visibleLines = Math.min(10, Math.max(1, inputScrollState.lines));
@@ -1289,12 +1284,6 @@ export function App({
         ) : null}
         {blocks.filter((b) => b.kind !== "welcome").map((block) => renderBlock(block, syntaxStyle))}
         {turn ? <TurnStatusIndicator turn={turn} blocks={blocks} effort={effort} /> : null}
-        {!turn && justFinishedSeconds !== null ? (
-          <text
-            content={`✻ Worked for ${justFinishedSeconds < 60 ? `${justFinishedSeconds}s` : `${Math.floor(justFinishedSeconds / 60)}m ${justFinishedSeconds % 60}s`}`}
-            style={{ fg: "#565f89", marginBottom: 1 }}
-          />
-        ) : null}
       </scrollbox>
 
       {permissionRequest ? (

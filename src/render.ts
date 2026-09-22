@@ -139,19 +139,78 @@ export function truncate(text: string, max = 500): string {
   return text.length > max ? `${text.slice(0, max)}…` : text;
 }
 
+// The SDK's public `SessionMessage` type doesn't declare a `timestamp` field, but a real session
+// transcript entry (confirmed against an actual `~/.claude/projects/*/*.jsonl` file) carries one —
+// an ISO string, same convention `SDKAssistantMessage`/`SDKUserMessage`'s own documented
+// `timestamp` field uses. Read defensively so an entry (or an older transcript format) without one
+// just skips "Worked for Xs" reconstruction for that turn rather than throwing.
+function timestampOf(m: SessionMessage): number | null {
+  const raw = (m as { timestamp?: string }).timestamp;
+  if (!raw) return null;
+  const ms = Date.parse(raw);
+  return Number.isNaN(ms) ? null : ms;
+}
+
 /**
  * Converts historical session messages (from getSessionMessages) into renderable ChatBlocks.
  * Links tool_use blocks to subsequent tool_result blocks, and preserves user/assistant dialogue.
+ *
+ * Also reconstructs a "✻ Worked for Xs" `turn-complete` block per finished turn from the real
+ * message timestamps in the transcript — this is what makes that note survive a full app restart
+ * + `/resume` (it's otherwise pushed live by `chatStore.endTurn()`, which has nothing to work from
+ * on a freshly-restarted process; see that method's comment).
  */
 export function convertSessionMessagesToBlocks(messages: SessionMessage[]): ChatBlock[] {
   const blocks: ChatBlock[] = [];
   let nextId = 0;
   const toolBlocksByUseId = new Map<string, ToolCallBlock>();
 
+  // Tracks the turn currently being accumulated: `start` is the real user message that opened it,
+  // `last` is the most recent timestamp seen since (a tool_result-carrying user message counts —
+  // it's still part of the same turn's tool loop, not a new one).
+  let turnStartMs: number | null = null;
+  let turnLastMs: number | null = null;
+
+  const flushTurn = (): void => {
+    if (turnStartMs !== null && turnLastMs !== null && turnLastMs > turnStartMs) {
+      blocks.push({ id: nextId++, kind: "turn-complete", durationMs: turnLastMs - turnStartMs });
+    }
+    turnStartMs = null;
+    turnLastMs = null;
+  };
+
   for (const m of messages) {
+    const ts = timestampOf(m);
+
     if (m.type === "user") {
       const msg = m.message as { role?: string; content?: unknown } | undefined;
       const content = msg?.content;
+
+      // Decided up front, before pushing anything — flushing the previous turn has to happen
+      // BEFORE this message's own blocks are pushed, not after, or the "✻ Worked for Xs" note for
+      // the turn that just ended lands one block too late (after this message's own text instead
+      // of before it).
+      const startsNewTurn =
+        typeof content === "string" ||
+        (Array.isArray(content) &&
+          content.some(
+            (item) =>
+              item !== null &&
+              typeof item === "object" &&
+              "type" in item &&
+              (item as { type: string }).type === "text" &&
+              typeof (item as { text?: string }).text === "string" &&
+              (item as { text?: string }).text!.length > 0 &&
+              !(item as { text?: string }).text!.startsWith("["),
+          ));
+
+      if (startsNewTurn) {
+        flushTurn();
+        turnStartMs = ts;
+        turnLastMs = ts;
+      } else if (ts !== null) {
+        turnLastMs = ts;
+      }
 
       if (typeof content === "string") {
         blocks.push({ id: nextId++, kind: "user", text: content });
@@ -180,6 +239,7 @@ export function convertSessionMessagesToBlocks(messages: SessionMessage[]): Chat
     } else if (m.type === "assistant") {
       const msg = m.message as { role?: string; content?: unknown } | undefined;
       const content = msg?.content;
+      if (ts !== null) turnLastMs = ts;
 
       if (Array.isArray(content)) {
         for (const item of content) {
@@ -228,6 +288,8 @@ export function convertSessionMessagesToBlocks(messages: SessionMessage[]): Chat
       }
     }
   }
+
+  flushTurn(); // close out whichever turn was still open when the transcript ends
 
   return blocks;
 }
