@@ -79,8 +79,7 @@ export async function runRepl(params: ReplParams): Promise<void> {
       chatStore.pushHost(
         "⚠️ **Wangs UI is not detected in this repository.**\n\n" +
           "This project does not have any `@wangs-ui/*` packages installed. Component research subagents (`wangs-ui-querier`) and design system tools will be inactive.\n\n" +
-          "• Type `/mcp` to configure or install the `wangs-ui` MCP server.\n" +
-          "• Install `@wangs-ui/react-core` (`bun add @wangs-ui/react-core`) to enable Wangs UI component development.",
+          "Install `@wangs-ui/react-core` in this project (`bun add @wangs-ui/react-core`), then restart Wangs Code to enable Wangs UI component development.",
       );
     }
 

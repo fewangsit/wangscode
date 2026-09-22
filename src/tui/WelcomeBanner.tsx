@@ -39,7 +39,7 @@ function CommandCard({
 // code.html's rose accent (its one card styled as a destructive action, not the gold the rest use).
 const BANNER_COMMANDS: { cmd: string; desc: string; accent?: string }[] = [
   { cmd: "/create-feature", desc: "Deterministic feature-build pipeline" },
-  { cmd: "/mcp", desc: "Manage & sync MCP servers (wangs-ui, tools)" },
+  { cmd: "/mcp", desc: "Inspect MCP servers & tools" },
   { cmd: "/usage", desc: "Token/cost totals and plan rate limits" },
   { cmd: "/model", desc: "Switch the active model" },
   { cmd: "/resume", desc: "Pick a previous session to resume" },
@@ -150,7 +150,7 @@ export function WelcomeBanner({
                   <text content="No @wangs-ui/* packages found in this project." style={{ fg: "#c0caf5" }} />
                 </box>
                 <text
-                  content="Component docs, UI research subagents, and wangs-ui MCP tools are inactive. Run /mcp to configure or install @wangs-ui/react-core to enable them."
+                  content="Component docs, UI research subagents, and wangs-ui MCP tools are inactive. Install @wangs-ui/react-core in this project, then restart to enable them."
                   style={{ fg: "#94a3b8" }}
                 />
               </box>

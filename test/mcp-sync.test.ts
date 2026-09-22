@@ -66,6 +66,108 @@ describe("mcp-sync", () => {
         rmSync(tempDir, { recursive: true, force: true });
       }
     });
+
+    test("resolves pnpm catalog: via pnpm-workspace.yaml default catalog", () => {
+      const tempDir = path.join(os.tmpdir(), `mcp-sync-test-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+      mkdirSync(tempDir, { recursive: true });
+      writeFileSync(path.join(tempDir, "package.json"), JSON.stringify({ dependencies: { "@wangs-ui/react-core": "catalog:" } }), "utf8");
+      writeFileSync(
+        path.join(tempDir, "pnpm-workspace.yaml"),
+        "packages:\n  - 'packages/*'\n\ncatalog:\n  '@wangs-ui/react-core': ^1.2.21\n",
+        "utf8",
+      );
+
+      try {
+        const result = detectProjectWangsUiVersion(tempDir);
+        expect(result).not.toBeNull();
+        expect(result?.version).toBe("1.2.21");
+      } finally {
+        rmSync(tempDir, { recursive: true, force: true });
+      }
+    });
+
+    test("resolves pnpm catalog:named via pnpm-workspace.yaml catalogs", () => {
+      const tempDir = path.join(os.tmpdir(), `mcp-sync-test-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+      mkdirSync(tempDir, { recursive: true });
+      writeFileSync(path.join(tempDir, "package.json"), JSON.stringify({ dependencies: { "@wangs-ui/react-core": "catalog:ui" } }), "utf8");
+      writeFileSync(path.join(tempDir, "pnpm-workspace.yaml"), "catalogs:\n  ui:\n    '@wangs-ui/react-core': 1.0.64\n", "utf8");
+
+      try {
+        const result = detectProjectWangsUiVersion(tempDir);
+        expect(result).not.toBeNull();
+        expect(result?.version).toBe("1.0.64");
+      } finally {
+        rmSync(tempDir, { recursive: true, force: true });
+      }
+    });
+
+    test("resolves bun catalog: via workspaces.catalog", () => {
+      const tempDir = path.join(os.tmpdir(), `mcp-sync-test-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+      mkdirSync(tempDir, { recursive: true });
+      writeFileSync(
+        path.join(tempDir, "package.json"),
+        JSON.stringify({
+          dependencies: { "@wangs-ui/react-core": "catalog:" },
+          workspaces: { packages: ["packages/*"], catalog: { "@wangs-ui/react-core": "^2.0.0" } },
+        }),
+        "utf8",
+      );
+
+      try {
+        const result = detectProjectWangsUiVersion(tempDir);
+        expect(result).not.toBeNull();
+        expect(result?.version).toBe("2.0.0");
+      } finally {
+        rmSync(tempDir, { recursive: true, force: true });
+      }
+    });
+
+    test("detects @wangs-ui dep in a workspace member package.json", () => {
+      const tempDir = path.join(os.tmpdir(), `mcp-sync-test-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+      const memberDir = path.join(tempDir, "packages", "web");
+      mkdirSync(memberDir, { recursive: true });
+      writeFileSync(path.join(tempDir, "package.json"), JSON.stringify({ private: true, workspaces: ["packages/*"] }), "utf8");
+      writeFileSync(path.join(tempDir, "pnpm-workspace.yaml"), "packages:\n  - 'packages/*'\n", "utf8");
+      writeFileSync(path.join(memberDir, "package.json"), JSON.stringify({ dependencies: { "@wangs-ui/react-core": "^3.1.0" } }), "utf8");
+
+      try {
+        const result = detectProjectWangsUiVersion(tempDir);
+        expect(result).not.toBeNull();
+        expect(result?.version).toBe("3.1.0");
+      } finally {
+        rmSync(tempDir, { recursive: true, force: true });
+      }
+    });
+
+    test("detects hoisted node_modules from a workspace member cwd", () => {
+      const tempDir = path.join(os.tmpdir(), `mcp-sync-test-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+      const coreDir = path.join(tempDir, "node_modules", "@wangs-ui", "react-core");
+      const memberDir = path.join(tempDir, "packages", "web");
+      mkdirSync(coreDir, { recursive: true });
+      mkdirSync(memberDir, { recursive: true });
+      writeFileSync(path.join(coreDir, "package.json"), JSON.stringify({ version: "4.0.0" }), "utf8");
+      writeFileSync(path.join(memberDir, "package.json"), JSON.stringify({ name: "web" }), "utf8");
+
+      try {
+        const result = detectProjectWangsUiVersion(memberDir);
+        expect(result).not.toBeNull();
+        expect(result?.version).toBe("4.0.0");
+      } finally {
+        rmSync(tempDir, { recursive: true, force: true });
+      }
+    });
+
+    test("still returns null for unresolvable workspace:* specs", () => {
+      const tempDir = path.join(os.tmpdir(), `mcp-sync-test-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+      mkdirSync(tempDir, { recursive: true });
+      writeFileSync(path.join(tempDir, "package.json"), JSON.stringify({ dependencies: { "@wangs-ui/react-core": "workspace:*" } }), "utf8");
+
+      try {
+        expect(detectProjectWangsUiVersion(tempDir)).toBeNull();
+      } finally {
+        rmSync(tempDir, { recursive: true, force: true });
+      }
+    });
   });
 
   describe("getMcpTargetRegistry", () => {

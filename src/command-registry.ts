@@ -42,7 +42,7 @@ export const HOST_COMMANDS: CommandDescriptor[] = [
   { name: "/model", description: "Switch the active model" },
   { name: "/resume", description: "Pick a previous session to resume" },
   { name: "/rename", description: "Rename the current session title" },
-  { name: "/mcp", description: "Interactive MCP server and tool manager" },
+  { name: "/mcp", description: "Inspect MCP servers and tools" },
   { name: "/artifacts", description: "Browse your published and shared artifacts" },
   { name: "/create-feature", description: "Run the deterministic feature-build pipeline" },
   { name: "/doctor", description: "Check and sync agent skills (TestSpectra, Wangs UI), fetching on demand if needed" },
