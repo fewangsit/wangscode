@@ -25,6 +25,14 @@ export const ICON_BORDER = "#8d6a2a";
 // so "dimmer gold" has to be a second precomputed hex, not GOLD at reduced opacity).
 export const GOLD_DIM = "#876c4a";
 
+// Full-row diff line highlighting (EditDiffView, BlockRenderers.tsx) — a git/editor-style
+// background band behind each +/- line, not just colored text, so a removed/added line reads at a
+// glance the way GitHub/VS Code diffs do. Same pre-blended-solid-color approach as GOLD_DIM: the
+// real GitHub dark-theme diff tints are translucent (~15% green/red over the panel bg), and
+// OpenTUI has no alpha, so these are that same blend computed once against BG rather than a guess.
+export const DIFF_ADD_BG = "#1c3324";
+export const DIFF_DEL_BG = "#3a2130";
+
 export const ROLE_COLOR: Record<string, string> = {
   user: GOLD,
   host: "#e0af68",

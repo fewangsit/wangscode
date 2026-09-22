@@ -110,7 +110,9 @@ export function formatToolCall(rawName: string, input: unknown, isSkill = false)
     return { headline: "Subagent" };
   }
 
-  // 3. Bash / Shell command
+  // 3. Bash / Shell command — headline is the fixed, human-readable "what happened" (matching
+  // Read/Edit's "Reading path"/"Editing path" pattern); the actual command text is secondary detail,
+  // not the headline — a raw "$ bun install" as the top-level line read backwards next to those.
   if (rawName.toLowerCase() === "bash" || toolName.toLowerCase() === "bash") {
     if (inputObj && typeof inputObj.command === "string") {
       const cmd = inputObj.command.trim();
@@ -118,11 +120,11 @@ export function formatToolCall(rawName: string, input: unknown, isSkill = false)
       const firstLine = lines[0] ?? "";
       const remainingCount = lines.length - 1;
       return {
-        headline: `$ ${firstLine}${remainingCount > 0 ? ` (+${remainingCount} lines)` : ""}`,
-        detail: remainingCount > 0 ? `↳ ${lines.slice(1).join(" ").trim()}` : undefined,
+        headline: "Ran 1 shell command",
+        detail: `↳ $ ${firstLine}${remainingCount > 0 ? ` (+${remainingCount} lines)` : ""}`,
       };
     }
-    return { headline: "Bash" };
+    return { headline: "Ran 1 shell command" };
   }
 
   // 4. File reading (Read, View, view_file, read_file)
@@ -130,7 +132,7 @@ export function formatToolCall(rawName: string, input: unknown, isSkill = false)
   if (isRead && inputObj) {
     const filePath = inputObj.file_path ?? inputObj.path ?? inputObj.TargetFile ?? inputObj.AbsolutePath ?? inputObj.filePath;
     if (typeof filePath === "string") {
-      return { headline: `Read: ${shortenPath(filePath)}` };
+      return { headline: `Reading ${shortenPath(filePath)}` };
     }
   }
 
@@ -138,13 +140,13 @@ export function formatToolCall(rawName: string, input: unknown, isSkill = false)
   const isEditOrWrite = /^(edit|write|write_to_file|replace_file_content|str_replace_editor)$/i.test(toolName);
   if (isEditOrWrite && inputObj) {
     const filePath = inputObj.file_path ?? inputObj.path ?? inputObj.TargetFile ?? inputObj.AbsolutePath ?? inputObj.filePath;
-    const action = toolName.toLowerCase().includes("write") ? "Write" : "Edit";
+    const action = toolName.toLowerCase().includes("write") ? "Writing" : "Editing";
     const desc =
       typeof inputObj.Description === "string" ? inputObj.Description : typeof inputObj.Instruction === "string" ? inputObj.Instruction : undefined;
 
     if (typeof filePath === "string") {
       return {
-        headline: `${action}: ${shortenPath(filePath)}`,
+        headline: `${action} ${shortenPath(filePath)}`,
         detail: desc ? `↳ ${desc}` : undefined,
       };
     }
@@ -190,6 +192,20 @@ export function formatToolCall(rawName: string, input: unknown, isSkill = false)
     headline: toolName,
     rawJson: input !== null && input !== undefined ? String(input) : undefined,
   };
+}
+
+// Tool results from the SDK's own built-in tools (Edit/Write in particular) sometimes carry a
+// trailing parenthetical aside meant for the MODEL, not the user — e.g. "The file ... has been
+// updated successfully. (file state is current in your context — no need to Read it back)". The
+// harness relies on the model seeing this to skip a redundant Read call; the human reading the TUI
+// transcript has no use for it and it reads as confusing noise (todo item: a user asked "kenapa
+// muncul info begini" after seeing exactly this string appear in their session). Stripped for
+// display only — the full text is still what the model itself received.
+const MODEL_ONLY_NOTE_RE = /\s*\((?:[^()]*\b(?:no need to (?:re-?read|read)|already in your context|file state is current)\b[^()]*)\)\s*$/i;
+
+/** Removes a trailing model-facing parenthetical note from tool-result text, for display only. */
+export function stripModelOnlyNote(text: string): string {
+  return text.replace(MODEL_ONLY_NOTE_RE, "").trimEnd();
 }
 
 /**

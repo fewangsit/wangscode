@@ -123,28 +123,29 @@ describe("format utilities", () => {
       expect(result.rawJson).toBeUndefined();
     });
 
-    test("formats Bash commands cleanly with $ prefix", () => {
+    test("formats Bash commands with a fixed headline and the command as detail", () => {
       const result = formatToolCall("Bash", { command: "bun test" });
       expect(result).toEqual({
-        headline: "$ bun test",
+        headline: "Ran 1 shell command",
+        detail: "↳ $ bun test",
       });
     });
 
-    test("formats multiline Bash command with line count hint and detail", () => {
+    test("formats multiline Bash command with line count hint in the detail", () => {
       const result = formatToolCall("Bash", { command: "echo line1\necho line2\necho line3" });
-      expect(result.headline).toBe("$ echo line1 (+2 lines)");
-      expect(result.detail).toBe("↳ echo line2 echo line3");
+      expect(result.headline).toBe("Ran 1 shell command");
+      expect(result.detail).toBe("↳ $ echo line1 (+2 lines)");
     });
 
     test("formats file read and edit tools with clean path and description", () => {
       const read = formatToolCall("Read", { file_path: "src/tui/App.tsx" });
-      expect(read.headline).toBe("Read: src/tui/App.tsx");
+      expect(read.headline).toBe("Reading src/tui/App.tsx");
 
       const edit = formatToolCall("replace_file_content", {
         TargetFile: "src/tui/App.tsx",
         Description: "Add key navigation handler",
       });
-      expect(edit.headline).toBe("Edit: src/tui/App.tsx");
+      expect(edit.headline).toBe("Editing src/tui/App.tsx");
       expect(edit.detail).toBe("↳ Add key navigation handler");
     });
 

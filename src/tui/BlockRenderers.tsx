@@ -3,8 +3,8 @@ import { useEffect, useState } from "react";
 import type { SyntaxStyle } from "@opentui/core";
 
 import type { ChatBlock, ToolCallBlock } from "./chat-store.ts";
-import { formatToolCall, getNodeSummary, isJsonString } from "./format.ts";
-import { GOLD, GOLD_DIM, ROLE_COLOR, TOOL_STATUS_COLOR, TOOL_STATUS_GLYPH } from "./theme.ts";
+import { formatToolCall, getNodeSummary, isJsonString, parseToolName } from "./format.ts";
+import { DIFF_ADD_BG, DIFF_DEL_BG, GOLD, GOLD_DIM, ROLE_COLOR, TOOL_STATUS_COLOR, TOOL_STATUS_GLYPH } from "./theme.ts";
 
 export interface JsonNodeViewProps {
   keyName?: string;
@@ -143,10 +143,113 @@ export function CollapsibleJson({ label, value, rawJson, syntaxStyle, defaultExp
   );
 }
 
+// "⎿" is Claude Code's own marker for "here's the collapsed result of the action above" — reused
+// here instead of a generic "▶ Output:"/"▶ Diff:" label so a tool call reads the same way a
+// reviewer already expects from Claude Code itself. The toggle arrow still lives inline (▶/▼)
+// since, unlike the real CLI's "ctrl+r to expand", this TUI's only affordance is a mouse click —
+// the arrow is what tells you there's something to click.
+
+/** Collapsed-by-default view for plain-text tool output (Read/Bash/Grep results etc.) — a short
+ *  result (a one-line success message, a short status string) renders inline as before, but
+ *  anything long enough to actually clutter the transcript (todo item 17: Read used to dump the
+ *  whole file body straight into the chat) starts collapsed behind a summary line. `summary`
+ *  overrides the default "N lines" label (e.g. Bash forces a fixed "Ran 1 shell command" summary
+ *  regardless of how short its raw stdout happens to be — a 2-line `bun install` result is exactly
+ *  as uninteresting collapsed-by-default as a 200-line one); `forceCollapse` skips the "short
+ *  enough to just show inline" bypass for the same reason. */
+function CollapsibleText({
+  text,
+  summary,
+  forceCollapse = false,
+  defaultExpanded = false,
+}: {
+  text: string;
+  summary?: string;
+  forceCollapse?: boolean;
+  defaultExpanded?: boolean;
+}): React.ReactNode {
+  const [expanded, setExpanded] = useState(defaultExpanded);
+  const lines = text.split("\n");
+
+  if (!forceCollapse && lines.length <= 3 && text.length <= 200) {
+    return (
+      <box style={{ flexDirection: "row", paddingLeft: 2 }}>
+        <text content="⎿  " style={{ fg: "#565f89" }} />
+        <text content={text} style={{ fg: "#565f89" }} />
+      </box>
+    );
+  }
+
+  const toggleGlyph = expanded ? "▼" : "▶";
+  return (
+    <box style={{ flexDirection: "column", paddingLeft: 2 }}>
+      <box style={{ flexDirection: "row", alignItems: "center" }} onMouseDown={() => setExpanded((prev) => !prev)}>
+        <text content={`⎿  ${toggleGlyph} `} style={{ fg: "#565f89" }} />
+        {!expanded ? <text content={summary ?? `${lines.length} lines`} style={{ fg: "#565f89" }} /> : null}
+      </box>
+      {expanded ? (
+        <box style={{ paddingLeft: 4, marginTop: 1 }}>
+          <text content={text} style={{ fg: "#565f89" }} />
+        </box>
+      ) : null}
+    </box>
+  );
+}
+
+/** Edit tool calls carry `old_string`/`new_string` in their own input — enough to show a real
+ *  diff (todo item 18) without waiting on any special tool-result shape. Not a proper LCS diff:
+ *  `old_string`/`new_string` are each a single contiguous replacement block (this codebase's own
+ *  Edit tool semantics, and Claude Code's), so a flat "every old line removed, every new line
+ *  added" read is what a reviewer actually wants here — a real diff algorithm would just be
+ *  re-deriving that same block shape the harder way. Line numbers are relative to each side of the
+ *  block (1-based), not the file's real line numbers — the block only carries `old_string`/
+ *  `new_string`, no surrounding file context to anchor an absolute line number to. */
+function EditDiffView({ oldString, newString }: { oldString: string; newString: string }): React.ReactNode {
+  const [expanded, setExpanded] = useState(false);
+  const removed = oldString.split("\n");
+  const added = newString.split("\n");
+  const numWidth = String(Math.max(removed.length, added.length)).length;
+
+  const toggleGlyph = expanded ? "▼" : "▶";
+  return (
+    <box style={{ flexDirection: "column", paddingLeft: 2 }}>
+      <box style={{ flexDirection: "row", alignItems: "center" }} onMouseDown={() => setExpanded((prev) => !prev)}>
+        <text content={`⎿  ${toggleGlyph} `} style={{ fg: "#565f89" }} />
+        {!expanded ? <text content={`-${removed.length} +${added.length} lines`} style={{ fg: "#565f89" }} /> : null}
+      </box>
+      {expanded ? (
+        <box style={{ flexDirection: "column", paddingLeft: 4, marginTop: 1 }}>
+          {removed.map((line, i) => (
+            <box key={`del-${i}`} style={{ backgroundColor: DIFF_DEL_BG, width: "100%" }}>
+              <text content={`${String(i + 1).padStart(numWidth)} - ${line}`} style={{ fg: "#f7768e" }} />
+            </box>
+          ))}
+          {added.map((line, i) => (
+            <box key={`add-${i}`} style={{ backgroundColor: DIFF_ADD_BG, width: "100%" }}>
+              <text content={`${String(i + 1).padStart(numWidth)} + ${line}`} style={{ fg: "#9ece6a" }} />
+            </box>
+          ))}
+        </box>
+      ) : null}
+    </box>
+  );
+}
+
 function ToolCallRow({ block, syntaxStyle }: { block: Extract<ChatBlock, { kind: "tool" }>; syntaxStyle: SyntaxStyle }): React.ReactNode {
   const glyph = TOOL_STATUS_GLYPH[block.status];
   const color = TOOL_STATUS_COLOR[block.status];
   const formatted = formatToolCall(block.name, block.input, block.isSkill);
+
+  const { toolName } = parseToolName(block.name);
+  const inputObj = typeof block.input === "object" && block.input !== null ? (block.input as Record<string, unknown>) : null;
+  const isEdit = /^edit$/i.test(toolName) && typeof inputObj?.old_string === "string" && typeof inputObj?.new_string === "string";
+  // The diff (Edit) / headline (Write) already say "this file changed" on their own — the tool's
+  // own resultText on a successful Edit/Write is just a generic "The file ... has been updated
+  // successfully." sentence restating that, with nothing new for a human reader. Suppressed only
+  // on success — an error result still needs to be seen.
+  const isEditOrWrite = /^(edit|write)$/i.test(toolName);
+  const suppressResultText = isEditOrWrite && block.status !== "error";
+  const isBash = /^bash$/i.test(toolName);
 
   return (
     <box style={{ flexDirection: "column", marginBottom: 1 }}>
@@ -156,14 +259,16 @@ function ToolCallRow({ block, syntaxStyle }: { block: Extract<ChatBlock, { kind:
           <text content={formatted.detail} style={{ fg: "#94a3b8" }} wrapMode="none" truncate />
         </box>
       ) : null}
-      {formatted.rawJson ? <CollapsibleJson label="Input" value={block.input} rawJson={formatted.rawJson} syntaxStyle={syntaxStyle} /> : null}
-      {block.resultText ? (
+      {isEdit ? (
+        <EditDiffView oldString={inputObj!.old_string as string} newString={inputObj!.new_string as string} />
+      ) : formatted.rawJson ? (
+        <CollapsibleJson label="Input" value={block.input} rawJson={formatted.rawJson} syntaxStyle={syntaxStyle} />
+      ) : null}
+      {block.resultText && !suppressResultText ? (
         isJsonString(block.resultText) ? (
           <CollapsibleJson label="Result" value={block.resultText} syntaxStyle={syntaxStyle} />
         ) : (
-          <box style={{ paddingLeft: 2 }}>
-            <text content={block.resultText} style={{ fg: "#565f89" }} />
-          </box>
+          <CollapsibleText text={block.resultText} forceCollapse={isBash} />
         )
       ) : null}
     </box>

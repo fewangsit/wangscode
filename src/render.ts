@@ -1,6 +1,7 @@
 import type { SDKMessage, SessionMessage } from "@anthropic-ai/claude-agent-sdk";
 
 import type { ChatBlock, ChatStore, ToolCallBlock } from "./tui/chat-store.ts";
+import { stripModelOnlyNote } from "./tui/format.ts";
 import type { SessionStatusStore } from "./tui/session-status.ts";
 
 type TrackedBlock = { kind: "thinking" } | { kind: "tool_use"; toolUseId: string };
@@ -117,7 +118,7 @@ export function createMessageRenderer(chatStore: ChatStore, sessionStatus: Sessi
 
 export function summarizeToolResultContent(content: unknown): string {
   if (content === undefined || content === null) return "";
-  if (typeof content === "string") return truncate(content);
+  if (typeof content === "string") return truncate(stripModelOnlyNote(content));
   if (Array.isArray(content)) {
     const text = content
       .map((block) => {
@@ -129,7 +130,7 @@ export function summarizeToolResultContent(content: unknown): string {
         return String(block);
       })
       .join("\n");
-    return truncate(text);
+    return truncate(stripModelOnlyNote(text));
   }
   return truncate(JSON.stringify(content));
 }
