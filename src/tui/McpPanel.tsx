@@ -397,6 +397,16 @@ function ToolDetailView({
   const required = new Set(schema?.required ?? []);
   const paramEntries = Object.entries(properties);
 
+  // Account-managed servers (config.type "claudeai-proxy", e.g. "claude.ai Claude Docs") proxy
+  // through Anthropic's own internal API — description/inputSchema for their tools are only ever
+  // known inside the running `claude` subprocess's own authenticated session (confirmed: a real
+  // connected session's mcpServerStatus() never returns `description` for these, only name +
+  // annotations), so an external fetch from this app can never succeed and would just be wasted
+  // latency. "Loading details…" is only honest for servers this app can actually still enrich.
+  const config = server.config;
+  const configType = config && "type" in config ? config.type : undefined;
+  const canFetchMoreDetails = Boolean(config) && (configType === "http" || configType === "sse" || (config !== undefined && "command" in config));
+
   return (
     <box style={{ border: true, borderStyle: "rounded", borderColor: CARD_BORDER, flexDirection: "column", paddingX: 0, paddingY: 0 }}>
       {/* Header */}
@@ -447,7 +457,10 @@ function ToolDetailView({
             <box style={{ flexDirection: "column", marginTop: 1 }}>
               <text content="Description:" style={{ fg: "#94a3b8" }} />
               <box style={{ paddingLeft: 3 }}>
-                <text content="Loading details…" style={{ fg: "#565f89" }} />
+                <text
+                  content={canFetchMoreDetails ? "Loading details…" : "(not available — managed outside this app's own session)"}
+                  style={{ fg: "#565f89" }}
+                />
               </box>
             </box>
           ) : null}

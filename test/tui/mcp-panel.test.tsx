@@ -193,6 +193,9 @@ describe("McpPanel", () => {
       {
         name: "uiux-knowledge",
         status: "connected",
+        // A real, directly-fetchable HTTP config — "Loading details…" is only the honest message
+        // for a server this app can actually still enrich (see McpPanel.tsx's canFetchMoreDetails).
+        config: { type: "http", url: "http://example.test/mcp" },
         tools: [
           {
             name: "query_graph",
@@ -212,6 +215,35 @@ describe("McpPanel", () => {
     expect(output).toContain("query_graph");
     expect(output).toContain("Description:");
     expect(output).toContain("Loading details…");
+  });
+
+  test("renders 'not available' instead of stalled loading for a claudeai-proxy server", async () => {
+    // "claude.ai Claude Docs" and similarly account-managed servers proxy through Anthropic's own
+    // internal API — this app can never fetch their description/inputSchema from outside the
+    // running `claude` subprocess's own session, so showing "Loading details…" forever would be
+    // dishonest (it will never resolve). See mcp-tools.ts's fetchServerToolDefinitions for the
+    // matching skip on the fetch side.
+    const claudeaiProxyServer: McpServerStatus[] = [
+      {
+        name: "claude.ai Claude Docs",
+        status: "connected",
+        config: { type: "claudeai-proxy", url: "https://api.anthropic.com/v1/pages/mcp", id: "mcpsrv_test" },
+        tools: [{ name: "read", annotations: { readOnly: true } }],
+      },
+    ];
+
+    const testRenderer = await createTestRenderer({ width: 80, height: 24 });
+    const root = createRoot(testRenderer.renderer);
+
+    root.render(<McpPanel view={{ kind: "tool-detail", serverIdx: 0, toolIdx: 0 }} servers={claudeaiProxyServer} loading={false} />);
+    await new Promise((r) => setTimeout(r, 60));
+    await testRenderer.renderOnce();
+
+    const output = testRenderer.captureCharFrame();
+    expect(output).toContain("read");
+    expect(output).toContain("Description:");
+    expect(output).toContain("not available");
+    expect(output).not.toContain("Loading details…");
   });
 
   test("renders loading state", async () => {

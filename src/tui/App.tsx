@@ -32,7 +32,7 @@ import { permissionOptionsFor, PermissionPrompt } from "./PermissionPrompt.tsx";
 import { SessionPicker, type SessionInfo } from "./SessionPicker.tsx";
 import { getServerActions, McpPanel, type McpPanelView, type McpServerAction, MCP_SERVER_ACTIONS } from "./McpPanel.tsx";
 import { ArtifactsPanel, type ArtifactItem } from "./ArtifactsPanel.tsx";
-import { clearMcpToolCache, enrichMcpServersWithTools, fetchServerToolDefinitions, type McpTool } from "../mcp-tools.ts";
+import { clearMcpToolCache, fetchServerToolDefinitions, type McpTool } from "../mcp-tools.ts";
 
 // Plain Enter submits (like the old single-line <input>), Option/Alt+Enter inserts a newline
 // instead — the opposite of Textarea's own default table (return=newline, meta+return=submit),
@@ -202,6 +202,19 @@ export function App({
   const [mcpServers, setMcpServers] = useState<McpServerStatus[]>([]);
   const [mcpLoading, setMcpLoading] = useState(false);
   const mcpToolDetailScrollRef = useRef<ScrollBoxRenderable | null>(null);
+
+  // Some servers (claude.ai Claude Docs in particular — confirmed via a real SDK session: still
+  // "pending" a full 2s after the session starts) take real time to settle from "pending" to
+  // "connected"/"failed". openMcpPanel's own mcpServerStatus() call is a one-shot snapshot, so a
+  // server caught mid-connect at that instant would otherwise show "pending" forever until the
+  // user manually hits Reconnect. Poll while the panel is open and something's still settling.
+  useEffect(() => {
+    if (!mcpPanelOpen || !mcpServers.some((s) => s.status === "pending")) return undefined;
+    const id = setInterval(() => {
+      void getSession()?.mcpServerStatus().then(setMcpServers);
+    }, 1000);
+    return () => clearInterval(id);
+  }, [mcpPanelOpen, mcpServers, getSession]);
 
   // The interactive /artifacts overlay — same pattern as /mcp, /model, etc.
   const [artifactsPanelOpen, setArtifactsPanelOpen] = useState(false);
@@ -660,12 +673,19 @@ export function App({
         // (session-options.ts) — when it's absent from this list, that means it genuinely isn't
         // configured for this session (not installed in the project), same as any other server
         // that's simply not there; no synthetic "disabled" placeholder needed anymore.
+        //
+        // Deliberately NOT calling enrichMcpServersWithTools here anymore: `server.tools` from
+        // this same mcpServerStatus() call already carries name/description/annotations for free
+        // (confirmed in sdk.d.ts) — only inputSchema is missing, and fetching that for a stdio
+        // server means spawning a brand-new subprocess (e.g. `npx @wangs-ui/mcp@version` all over
+        // again, alongside the one already connected). Eagerly doing that for every server the
+        // instant /mcp opens was the real cause of "Loading details… kenapa lama banget, di semua
+        // mcp" — N subprocess spawns kicked off in the background before the user has even picked
+        // a server. `handleMcpAction`'s "Show Tools" branch below already fetches the full schema
+        // lazily, scoped to the one server the user actually opens — that's the only place this
+        // needs to happen now.
         setMcpServers(servers);
         setMcpLoading(false);
-
-        void enrichMcpServersWithTools(servers, cwd).then((enriched) => {
-          setMcpServers(enriched);
-        });
       })
       .catch((err: unknown) => {
         chatStore.pushHost(`Could not list MCP servers: ${err instanceof Error ? err.message : String(err)}`);
@@ -682,7 +702,12 @@ export function App({
     if (action === "Show Tools") {
       setMcpPanelView({ kind: "tools", serverIdx, selectedIdx: 0 });
       const currentTools = server.tools as McpTool[] | undefined;
-      const needsEnrichment = !currentTools || currentTools.length === 0 || currentTools.some((t) => !t.description && !t.inputSchema);
+      // `server.tools` from mcpServerStatus() already carries name/description/annotations for
+      // free (see openMcpPanel's comment) — inputSchema is the only field that genuinely needs the
+      // extra fetch, so gate on that alone. Gating on `!description` too (the old check) meant this
+      // never ran at all once description started always being present, silently stranding every
+      // tool's "Loading details…" forever instead of it ever resolving.
+      const needsEnrichment = !currentTools || currentTools.length === 0 || currentTools.some((t) => !t.inputSchema);
       if (needsEnrichment) {
         void fetchServerToolDefinitions(server, cwd).then((enrichedTools) => {
           if (enrichedTools.length > 0) {

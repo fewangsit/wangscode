@@ -256,6 +256,31 @@ function resolveServerCommandAndArgs(server: McpServerStatus, cwd?: string): { c
 }
 
 /**
+ * Parses an MCP "Streamable HTTP" JSON-RPC response, which may come back as either a plain JSON
+ * body or a one-shot SSE stream (`event: message\ndata: {...}\n\n`) — both are spec-legal, and a
+ * real server can send SSE even for a single non-streaming reply (confirmed against docs-knowledge's
+ * actual server: it always does). A naive `resp.json()` throws on the SSE shape (it isn't valid
+ * JSON on its own), which — caught by the caller's try/catch — silently produced zero tools and a
+ * permanently-empty inputSchema for every HTTP-based server, not just docs-knowledge.
+ */
+async function parseJsonRpcHttpResponse(resp: Response): Promise<{ result?: { tools?: McpTool[] } }> {
+  const contentType = resp.headers.get("content-type") ?? "";
+  if (!contentType.includes("text/event-stream")) {
+    return (await resp.json()) as { result?: { tools?: McpTool[] } };
+  }
+
+  const text = await resp.text();
+  for (const line of text.split("\n")) {
+    const trimmed = line.trim();
+    if (!trimmed.startsWith("data:")) continue;
+    const payload = trimmed.slice("data:".length).trim();
+    if (!payload) continue;
+    return JSON.parse(payload) as { result?: { tools?: McpTool[] } };
+  }
+  return {};
+}
+
+/**
  * Fetches full tool definitions (name, description, inputSchema, annotations)
  * for the given MCP server.
  */
@@ -272,9 +297,22 @@ export async function fetchServerToolDefinitions(server: McpServerStatus, cwd?: 
 
   let fetchedTools: McpTool[] = [];
 
-  // Check HTTP/SSE
+  // Check HTTP/SSE — restricted to config.type "http"/"sse" specifically, NOT any config that
+  // merely happens to have a `url` field. `claude.ai Claude Docs` and similarly account-managed
+  // servers report `type: "claudeai-proxy"` with a `url` pointing at Anthropic's own internal API
+  // (https://api.anthropic.com/v1/pages/mcp) — confirmed via a real connected session. A plain
+  // unauthenticated fetch() to that URL can never succeed (it needs the running `claude` subprocess's
+  // own account session, which this app has no access to and must not try to fabricate), so
+  // attempting it was pure wasted latency: a guaranteed-to-fail request eating the full 5s timeout
+  // on every "Show Tools" click, silently swallowed by the catch below, forever stuck showing
+  // "Loading details…". mcpServerStatus() itself never returns `description` for these proxied
+  // tools either (confirmed: only `name`+`annotations`) — there is no manual way to get it from
+  // outside the subprocess (that's what /doctor-style tool search running INSIDE the subprocess,
+  // e.g. ToolSearch, has that this app's own external fetch never will), so this now fails fast
+  // and lets the UI show "no description available" instead of stalling.
   const config = server.config;
-  if (config && "url" in config && typeof (config as { url?: unknown }).url === "string") {
+  const isDirectlyFetchableHttp = config && "type" in config && (config.type === "http" || config.type === "sse");
+  if (isDirectlyFetchableHttp && "url" in config && typeof (config as { url?: unknown }).url === "string") {
     const url = (config as { url: string }).url;
     if (url) {
       try {
@@ -282,13 +320,20 @@ export async function fetchServerToolDefinitions(server: McpServerStatus, cwd?: 
           method: "POST",
           headers: {
             "Content-Type": "application/json",
+            // MCP's "Streamable HTTP" transport lets the server reply as either a plain JSON body
+            // or a one-shot SSE stream (`event: message\ndata: {...}`) — both are spec-legal, and
+            // real servers (confirmed against docs-knowledge's actual server) do choose SSE even
+            // for a single non-streaming reply. Without offering it in Accept, a strict server can
+            // refuse the request outright; parseJsonRpcHttpResponse below handles either shape the
+            // server actually sends back.
+            Accept: "application/json, text/event-stream",
             ...(config as { headers?: Record<string, string> }).headers,
           },
           body: JSON.stringify({ jsonrpc: "2.0", id: 2, method: "tools/list", params: {} }),
           signal: AbortSignal.timeout(5000),
         });
         if (resp.ok) {
-          const data = (await resp.json()) as { result?: { tools?: McpTool[] } };
+          const data = await parseJsonRpcHttpResponse(resp);
           if (Array.isArray(data.result?.tools)) {
             fetchedTools = data.result.tools;
           }
