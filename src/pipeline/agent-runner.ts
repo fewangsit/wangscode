@@ -6,6 +6,7 @@
 import { query, SYSTEM_PROMPT_DYNAMIC_BOUNDARY, type Options } from "@anthropic-ai/claude-agent-sdk";
 
 import { DOCS_KNOWLEDGE_MCP_SERVERS } from "../docs-knowledge.ts";
+import { resolveWangsUiMcpServer } from "../mcp-sync.ts";
 import { PRIMARY_RULES } from "../primary-rules.ts";
 import { WANGS_SUBAGENTS } from "../subagents.ts";
 import { PIPELINE_SYSTEM_PREAMBLE } from "./system-prompt.ts";
@@ -36,6 +37,13 @@ export interface AgentTurnResult {
 }
 
 export async function runAgentTurn(params: RunAgentTurnParams): Promise<AgentTurnResult> {
+  // wangs-ui-querier (subagents.ts) deliberately doesn't hardcode its own mcpServers — it's meant
+  // to inherit whatever "wangs-ui" server is live on the session it runs in, so it always talks to
+  // the exact @wangs-ui/mcp version matching this project's installed @wangs-ui/* packages. That
+  // only works if something actually registers a "wangs-ui" server here — previously nothing did,
+  // so the ui-slice phase's wangs-ui-querier subagent never had a real connection to inherit.
+  const wangsUiMcp = resolveWangsUiMcpServer(params.repoRoot);
+
   const options: Options = {
     cwd: params.repoRoot,
     model: params.model ?? "claude-sonnet-5",
@@ -50,7 +58,7 @@ export async function runAgentTurn(params: RunAgentTurnParams): Promise<AgentTur
     // and requirements-phase.ts's gap-check) — registering it unconditionally
     // here is harmless for phases that don't list those tools, same
     // reasoning as `agents` above.
-    mcpServers: DOCS_KNOWLEDGE_MCP_SERVERS,
+    mcpServers: { ...DOCS_KNOWLEDGE_MCP_SERVERS, ...(wangsUiMcp ? { "wangs-ui": wangsUiMcp } : {}) },
     // `type: "custom"` instead of the SDK's "claude_code" preset — needed to
     // place SYSTEM_PROMPT_DYNAMIC_BOUNDARY at all (the preset's own `append`
     // is a plain string, no boundary support). PIPELINE_SYSTEM_PREAMBLE

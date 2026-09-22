@@ -1,6 +1,6 @@
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
-import type { McpServerStatus, Query } from "@anthropic-ai/claude-agent-sdk";
+import type { McpServerConfig } from "@anthropic-ai/claude-agent-sdk";
 
 import { PACKAGE_ROOT } from "./package-root.ts";
 
@@ -35,7 +35,13 @@ export function detectProjectWangsUiVersion(cwd: string): WangsUiVersionInfo | n
     }
   }
 
-  // 2. Check project package.json dependencies
+  // 2. Check project package.json dependencies — only the same UI-component-library candidates as
+  // step 1 above, NOT every `@wangs-ui/*`-named package. `@wangs-ui/skills` in particular (the
+  // skill-installer CLI, see skills-sync.ts) is a real, common `@wangs-ui/*` dependency that has
+  // nothing to do with which `@wangs-ui/mcp` version to spawn — matching on name prefix alone
+  // picked it up here before this fix, and its version field is frequently a pnpm/yarn workspace
+  // protocol reference (`catalog:`, `workspace:*`) rather than a real semver, which would have
+  // gone straight into an `npx @wangs-ui/mcp@<version>` command otherwise.
   const rootPkgPath = path.join(cwd, "package.json");
   try {
     if (existsSync(rootPkgPath)) {
@@ -45,46 +51,22 @@ export function detectProjectWangsUiVersion(cwd: string): WangsUiVersionInfo | n
         devDependencies?: Record<string, string>;
       };
       const allDeps = { ...pkg.dependencies, ...pkg.devDependencies };
-      for (const [name, rawVersion] of Object.entries(allDeps)) {
-        if (name.startsWith("@wangs-ui/")) {
-          // Clean semver range operators (^1.2.21, ~1.2.21, >=1.2.21 -> 1.2.21)
-          const clean = rawVersion.replace(/^[\^~>=<v]+/, "").trim();
-          if (clean.length > 0) {
-            return { version: clean, source: `${name} (package.json)` };
-          }
+      for (const candidate of WANGS_UI_CANDIDATE_PACKAGES) {
+        const name = `@wangs-ui/${candidate}`;
+        const rawVersion = allDeps[name];
+        if (!rawVersion) continue;
+
+        // Clean semver range operators (^1.2.21, ~1.2.21, >=1.2.21 -> 1.2.21)
+        const clean = rawVersion.replace(/^[\^~>=<v]+/, "").trim();
+        // Reject workspace/catalog protocol references (pnpm `catalog:`, `workspace:*`, yarn
+        // `link:`, etc.) — not a real, publishable version `npx @wangs-ui/mcp@<version>` could use.
+        if (clean.length > 0 && /^\d/.test(clean)) {
+          return { version: clean, source: `${name} (package.json)` };
         }
       }
     }
   } catch {
     // Ignore read/parse error
-  }
-
-  return null;
-}
-
-/**
- * Extracts the version of `@wangs-ui/mcp` currently configured on the server, if any.
- */
-export function detectCurrentMcpVersion(server?: McpServerStatus): string | null {
-  if (!server) return null;
-
-  // 1. If serverInfo has a version reported by the running process
-  if (server.serverInfo?.version) {
-    return server.serverInfo.version;
-  }
-
-  // 2. Parse from args: e.g. ["-y", "@wangs-ui/mcp@1.2.21"]
-  const config = server.config;
-  if (config && "args" in config && Array.isArray(config.args)) {
-    for (const arg of config.args) {
-      if (arg === "@wangs-ui/mcp") {
-        return "latest";
-      }
-      const match = arg.match(/@wangs-ui\/mcp@(.+)$/);
-      if (match?.[1]) {
-        return match[1].trim();
-      }
-    }
   }
 
   return null;
@@ -133,84 +115,23 @@ export function getMcpTargetRegistry(cwd: string): string | undefined {
 }
 
 /**
- * Updates or creates `cwd/.mcp.json` with the specified @wangs-ui/mcp version and registry.
+ * Builds the `wangs-ui` MCP server config to spawn for the project at `cwd`, derived live from
+ * whatever `@wangs-ui/*` version that project actually has installed right now — not a value
+ * stored anywhere (project `.mcp.json`, the user's global `~/.claude.json`) that could drift out
+ * of sync after a routine `bun install`/upgrade with nothing forcing a re-sync. Callers (see
+ * session-options.ts, pipeline/agent-runner.ts) merge this straight into `Options.mcpServers`, the
+ * same in-process pattern already used for `wangs-feature-build`/`docs-knowledge` — the SDK spawns
+ * it as a real child process itself, no file involved. Returns null (server simply omitted, same
+ * as those other two when unused) when `@wangs-ui/*` isn't installed in this project.
  */
-export function writeProjectMcpConfig(cwd: string, serverName: string, config: { command: string; args: string[] }): void {
-  const mcpJsonPath = path.join(cwd, ".mcp.json");
-  let existingData: { mcpServers?: Record<string, unknown> } = {};
-
-  if (existsSync(mcpJsonPath)) {
-    try {
-      const raw = readFileSync(mcpJsonPath, "utf8");
-      existingData = JSON.parse(raw) as { mcpServers?: Record<string, unknown> };
-    } catch {
-      existingData = {};
-    }
-  }
-
-  const updatedData = {
-    ...existingData,
-    mcpServers: {
-      ...existingData.mcpServers,
-      [serverName]: config,
-    },
-  };
-
-  writeFileSync(mcpJsonPath, JSON.stringify(updatedData, null, 2) + "\n", "utf8");
-}
-
-/**
- * Syncs the project's `@wangs-ui/mcp` configuration in `.mcp.json` to match the project's
- * installed/specified `@wangs-ui/*` version (or explicit targetVersion) and reconnects the MCP server.
- */
-export async function syncWangsUiMcp(
-  cwd: string,
-  session?: Query,
-  targetVersion?: string,
-): Promise<{ success: boolean; targetVersion?: string; error?: string }> {
-  const versionInfo = detectProjectWangsUiVersion(cwd);
-  const version = targetVersion ?? versionInfo?.version;
-  if (!version) {
-    return {
-      success: false,
-      error: "No @wangs-ui/* packages found in this project. Specify a version or install @wangs-ui/react-core first.",
-    };
-  }
+export function resolveWangsUiMcpServer(cwd: string): McpServerConfig | null {
+  const info = detectProjectWangsUiVersion(cwd);
+  if (!info) return null;
 
   const registry = getMcpTargetRegistry(cwd);
-
-  const mcpConfig = {
+  return {
+    type: "stdio",
     command: "npx",
-    args: ["-y", ...(registry ? [`--registry=${registry}`] : []), `@wangs-ui/mcp@${version}`],
+    args: ["-y", ...(registry ? [`--registry=${registry}`] : []), `@wangs-ui/mcp@${info.version}`],
   };
-
-  try {
-    writeProjectMcpConfig(cwd, "wangs-ui", mcpConfig);
-
-    if (session) {
-      try {
-        await session.reconnectMcpServer("wangs-ui");
-      } catch {
-        try {
-          await session.setMcpServers({
-            "wangs-ui": {
-              type: "stdio",
-              command: mcpConfig.command,
-              args: mcpConfig.args,
-            },
-          });
-        } catch {
-          // Ignore fallback error
-        }
-      }
-    }
-
-    return { success: true, targetVersion: version };
-  } catch (err) {
-    return {
-      success: false,
-      targetVersion: version,
-      error: err instanceof Error ? err.message : String(err),
-    };
-  }
 }

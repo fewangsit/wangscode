@@ -92,75 +92,39 @@ describe("McpPanel", () => {
     expect(output).toContain("tools · resources");
     expect(output).toContain("Tools:");
     expect(output).toContain("12 tools");
-    expect(output).toContain("Project @wangs-ui: 1.0.64");
-    expect(output).toContain("@wangs-ui/mcp@latest (⚠️ mismatch)");
-    expect(output).toContain("Update to @wangs-ui/mcp@1.0.64");
     expect(output).toContain("Show Tools");
     expect(output).toContain("Reconnect");
     expect(output).toContain("Disable server");
   });
 
-  test("renders server actions view with matched version", async () => {
-    const matchedServers: McpServerStatus[] = [
+  test("renders server actions view for a disabled/errored server", async () => {
+    // wangs-ui is spawned automatically (session-options.ts) when @wangs-ui/* is detected in the
+    // project — it's just an ordinary server name here, no special-cased UI for it anymore (see
+    // McpPanel.tsx's getServerActions).
+    const disabledServers: McpServerStatus[] = [
       {
         name: "wangs-ui",
-        status: "connected",
-        scope: "project",
-        config: {
-          command: "npx",
-          args: ["-y", "@wangs-ui/mcp@1.0.64"],
-        },
-        tools: Array.from({ length: 12 }, (_, i) => ({ name: `tool_${i}` })),
+        status: "disabled",
+        error: "connection refused",
       },
     ];
 
     const testRenderer = await createTestRenderer({ width: 80, height: 18 });
     const root = createRoot(testRenderer.renderer);
 
-    root.render(
-      <McpPanel
-        view={{ kind: "actions", serverIdx: 0, selectedIdx: 0 }}
-        servers={matchedServers}
-        loading={false}
-        cwd="/Volumes/Home/Documents/uiux-global-setting"
-      />,
-    );
+    root.render(<McpPanel view={{ kind: "actions", serverIdx: 0, selectedIdx: 0 }} servers={disabledServers} loading={false} />);
     await new Promise((r) => setTimeout(r, 60));
     await testRenderer.renderOnce();
 
     const output = testRenderer.captureCharFrame();
-    expect(output).toContain("Project @wangs-ui: 1.0.64");
-    expect(output).toContain("@wangs-ui/mcp@1.0.64 (✔ matched)");
-    expect(output).toContain("Show Tools");
+    expect(output).toContain("wangs-ui");
+    expect(output).toContain("disabled");
+    expect(output).toContain("Error:");
+    expect(output).toContain("connection refused");
     expect(output).toContain("Reconnect");
-    expect(output).toContain("Sync with project (@wangs-ui/mcp@1.0.64)");
-    expect(output).toContain("Disable server");
-  });
-
-  test("renders server actions view when wangs-ui is not in project", async () => {
-    const uninstalledServers: McpServerStatus[] = [
-      {
-        name: "wangs-ui",
-        status: "disabled",
-        scope: "project",
-        error: "Not installed (@wangs-ui not detected in project)",
-      },
-    ];
-
-    const testRenderer = await createTestRenderer({ width: 80, height: 24 });
-    const root = createRoot(testRenderer.renderer);
-
-    root.render(
-      <McpPanel view={{ kind: "actions", serverIdx: 0, selectedIdx: 0 }} servers={uninstalledServers} loading={false} cwd="/tmp/empty-repo" />,
-    );
-    await new Promise((r) => setTimeout(r, 60));
-    await testRenderer.renderOnce();
-
-    const output = testRenderer.captureCharFrame();
-    expect(output).toContain("Project @wangs-ui: not detected in project");
-    expect(output).toContain("not installed");
-    expect(output).toContain("Install @wangs-ui/mcp@latest");
-    expect(output).toContain("Wangs UI is not installed in this repository");
+    expect(output).toContain("Enable server");
+    // No "Show Tools" — not connected and no tools reported.
+    expect(output).not.toContain("Show Tools");
   });
 
   test("renders tool list view", async () => {

@@ -9,6 +9,7 @@ import { createFeatureBuildMcpServer } from "./feature-build-tool.ts";
 import { WANGS_SUBAGENTS } from "./subagents.ts";
 import { PACKAGE_ROOT } from "./package-root.ts";
 import { DOCS_KNOWLEDGE_MCP_SERVERS, DOCS_KNOWLEDGE_USAGE_NOTE } from "./docs-knowledge.ts";
+import { resolveWangsUiMcpServer } from "./mcp-sync.ts";
 
 const WANGS_PLUGIN_ROOT = path.join(PACKAGE_ROOT, "wangs-plugin");
 
@@ -41,6 +42,8 @@ export function buildSessionOptions(
   featureBuildController: FeatureBuildController,
   extras: SessionOptionsExtras = {},
 ): Options {
+  const wangsUiMcp = resolveWangsUiMcpServer(cwd);
+
   return {
     cwd,
     model: extras.model ?? DEFAULT_MODEL,
@@ -51,6 +54,7 @@ export function buildSessionOptions(
     mcpServers: {
       "wangs-feature-build": createFeatureBuildMcpServer(featureBuildController),
       ...DOCS_KNOWLEDGE_MCP_SERVERS,
+      ...(wangsUiMcp ? { "wangs-ui": wangsUiMcp } : {}),
     },
     // Project-specific skills bundled inside wangs-code itself (see
     // wangs-plugin/) — a consumer repo needs zero .claude/skills config for

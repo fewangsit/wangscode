@@ -1,7 +1,6 @@
 import type { McpServerStatus } from "@anthropic-ai/claude-agent-sdk";
 import type { ScrollBoxRenderable } from "@opentui/core";
 
-import { detectCurrentMcpVersion, detectProjectWangsUiVersion } from "../mcp-sync.ts";
 import { BG, CARD_BORDER, GOLD } from "./theme.ts";
 
 import type { McpTool } from "../mcp-tools.ts";
@@ -18,59 +17,24 @@ export type McpPanelView =
   | { kind: "tools"; serverIdx: number; selectedIdx: number }
   | { kind: "tool-detail"; serverIdx: number; toolIdx: number };
 
-/** The actions available for any server in the actions sub-view. */
-export type McpServerAction =
-  | "Show Tools"
-  | "Reconnect"
-  | "Toggle"
-  | `Update to @wangs-ui/mcp@${string}`
-  | `Install @wangs-ui/mcp@${string}`
-  | `Sync with project (@wangs-ui/mcp@${string})`
-  | string;
+/** The actions available for any server in the actions sub-view — the same generic set for every
+ *  server (including wangs-ui, spawned automatically at the version the project has installed —
+ *  see mcp-sync.ts's resolveWangsUiMcpServer — so there's nothing left to install/update/sync
+ *  manually here). */
+export type McpServerAction = "Show Tools" | "Reconnect" | "Toggle" | string;
 
 export const MCP_SERVER_ACTIONS: McpServerAction[] = ["Show Tools", "Reconnect", "Toggle"];
 
-/**
- * Derives the contextual action list for a given server, offering dynamic
- * install / update / sync actions when wangs-ui version discrepancies are detected.
- */
-export function getServerActions(server: McpServerStatus, cwd?: string): McpServerAction[] {
+/** Derives the contextual action list for a given server. */
+export function getServerActions(server: McpServerStatus): McpServerAction[] {
   const actions: McpServerAction[] = [];
-
-  if (server.name === "wangs-ui") {
-    const projectInfo = cwd ? detectProjectWangsUiVersion(cwd) : null;
-    const mcpVersion = detectCurrentMcpVersion(server);
-    if (projectInfo) {
-      if (!mcpVersion) {
-        actions.push(`Install @wangs-ui/mcp@${projectInfo.version}`);
-      } else if (mcpVersion !== projectInfo.version) {
-        actions.push(`Update to @wangs-ui/mcp@${projectInfo.version}`);
-      }
-    } else {
-      if (!mcpVersion) {
-        actions.push("Install @wangs-ui/mcp@latest");
-      } else if (mcpVersion !== "latest") {
-        actions.push("Update to @wangs-ui/mcp@latest");
-      }
-    }
-  }
 
   // Show Tools if tools are present or server is connected
   if ((server.tools && server.tools.length > 0) || server.status === "connected") {
     actions.push("Show Tools");
   }
 
-  actions.push("Reconnect");
-
-  if (server.name === "wangs-ui" && cwd) {
-    const projectInfo = detectProjectWangsUiVersion(cwd);
-    const mcpVersion = detectCurrentMcpVersion(server);
-    if (projectInfo && mcpVersion === projectInfo.version) {
-      actions.push(`Sync with project (@wangs-ui/mcp@${projectInfo.version})`);
-    }
-  }
-
-  actions.push("Toggle");
+  actions.push("Reconnect", "Toggle");
 
   return actions;
 }
@@ -229,10 +193,7 @@ function ServerActionsView({
     capabilitiesStr = "tools";
   }
 
-  const projectInfo = server.name === "wangs-ui" && cwd ? detectProjectWangsUiVersion(cwd) : null;
-  const mcpVersion = detectCurrentMcpVersion(server);
-
-  const actions = getServerActions(server, cwd);
+  const actions = getServerActions(server);
   const toggleLabel = server.status === "disabled" ? "Enable server" : "Disable server";
 
   const formatActionLabel = (action: McpServerAction): string => {
@@ -314,57 +275,12 @@ function ServerActionsView({
           <text content={`${toolCount} tool${toolCount !== 1 ? "s" : ""}`} style={{ fg: "#c0caf5" }} />
         </box>
 
-        {server.name === "wangs-ui" ? (
-          projectInfo ? (
-            <box style={{ flexDirection: "row" }}>
-              <box style={{ minWidth: 18 }}>
-                <text content="Project @wangs-ui: " style={{ fg: "#94a3b8" }} />
-              </box>
-              <text content={`${projectInfo.version} (${projectInfo.source})`} wrapMode="none" truncate style={{ fg: "#c0caf5" }} />
-            </box>
-          ) : (
-            <box style={{ flexDirection: "row" }}>
-              <box style={{ minWidth: 18 }}>
-                <text content="Project @wangs-ui: " style={{ fg: "#94a3b8" }} />
-              </box>
-              <text content="not detected in project" style={{ fg: "#f7768e" }} />
-            </box>
-          )
-        ) : null}
-
-        {server.name === "wangs-ui" ? (
-          <box style={{ flexDirection: "row" }}>
-            <box style={{ minWidth: 18 }}>
-              <text content="MCP package: " style={{ fg: "#94a3b8" }} />
-            </box>
-            <text
-              content={
-                mcpVersion
-                  ? projectInfo && mcpVersion !== projectInfo.version
-                    ? `@wangs-ui/mcp@${mcpVersion} (⚠️ mismatch)`
-                    : `@wangs-ui/mcp@${mcpVersion} (✔ matched)`
-                  : "not installed"
-              }
-              wrapMode="none"
-              truncate
-              style={{
-                fg: !mcpVersion || (projectInfo && mcpVersion !== projectInfo.version) ? "#f7768e" : "#9ece6a",
-              }}
-            />
-          </box>
-        ) : server.name !== "wangs-ui" && server.serverInfo?.version ? (
+        {server.serverInfo?.version ? (
           <box style={{ flexDirection: "row" }}>
             <box style={{ minWidth: 18 }}>
               <text content="Version: " style={{ fg: "#94a3b8" }} />
             </box>
             <text content={server.serverInfo.version} style={{ fg: "#c0caf5" }} />
-          </box>
-        ) : null}
-
-        {server.name === "wangs-ui" && !projectInfo ? (
-          <box style={{ flexDirection: "column", marginTop: 1 }}>
-            <text content="💡 Wangs UI is not installed in this repository." style={{ fg: "#e0af68" }} />
-            <text content="   Install @wangs-ui/react-core to enable component research & docs." style={{ fg: "#94a3b8" }} />
           </box>
         ) : null}
 

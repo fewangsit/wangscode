@@ -32,7 +32,6 @@ import { permissionOptionsFor, PermissionPrompt } from "./PermissionPrompt.tsx";
 import { SessionPicker, type SessionInfo } from "./SessionPicker.tsx";
 import { getServerActions, McpPanel, type McpPanelView, type McpServerAction, MCP_SERVER_ACTIONS } from "./McpPanel.tsx";
 import { ArtifactsPanel, type ArtifactItem } from "./ArtifactsPanel.tsx";
-import { detectProjectWangsUiVersion, syncWangsUiMcp } from "../mcp-sync.ts";
 import { clearMcpToolCache, enrichMcpServersWithTools, fetchServerToolDefinitions, type McpTool } from "../mcp-tools.ts";
 
 // Plain Enter submits (like the old single-line <input>), Option/Alt+Enter inserts a newline
@@ -657,24 +656,14 @@ export function App({
     void session
       .mcpServerStatus()
       .then((servers) => {
-        let list = servers;
-        const hasWangsUi = servers.some((s) => s.name === "wangs-ui");
-        if (!hasWangsUi) {
-          const wangsVersion = cwd ? detectProjectWangsUiVersion(cwd) : null;
-          list = [
-            ...servers,
-            {
-              name: "wangs-ui",
-              status: "disabled",
-              error: wangsVersion ? "Not configured in project .mcp.json" : "Not installed (@wangs-ui not detected in project)",
-              scope: "project",
-            },
-          ];
-        }
-        setMcpServers(list);
+        // "wangs-ui" is now spawned automatically whenever @wangs-ui/* is detected in the project
+        // (session-options.ts) — when it's absent from this list, that means it genuinely isn't
+        // configured for this session (not installed in the project), same as any other server
+        // that's simply not there; no synthetic "disabled" placeholder needed anymore.
+        setMcpServers(servers);
         setMcpLoading(false);
 
-        void enrichMcpServersWithTools(list, cwd).then((enriched) => {
+        void enrichMcpServersWithTools(servers, cwd).then((enriched) => {
           setMcpServers(enriched);
         });
       })
@@ -713,79 +702,6 @@ export function App({
 
     const session = getSession();
     if (!session) return;
-
-    if (action.startsWith("Update to @wangs-ui/mcp@") || action.startsWith("Install @wangs-ui/mcp@") || action.startsWith("Sync with project")) {
-      const seq = ++mcpActionSeqRef.current;
-      setMcpLoading(true);
-      try {
-        clearMcpToolCache("wangs-ui");
-        const versionMatch = action.match(/@wangs-ui\/mcp@([^ )]+)/);
-        const explicitVersion = versionMatch?.[1];
-
-        const res = await syncWangsUiMcp(cwd, session, explicitVersion);
-        if (!res.success) {
-          chatStore.pushHost(`Could not sync @wangs-ui/mcp: ${res.error}`);
-          return;
-        }
-
-        // Reconnection runs asynchronously in the subprocess.
-        // Poll mcpServerStatus() every 400ms until status becomes "connected"
-        const startTime = Date.now();
-        const timeoutMs = 10000;
-        let lastServers: McpServerStatus[] = [];
-        let target: McpServerStatus | undefined;
-
-        while (Date.now() - startTime < timeoutMs) {
-          if (mcpActionSeqRef.current !== seq) return;
-          await new Promise((r) => setTimeout(r, 400));
-          if (mcpActionSeqRef.current !== seq) return;
-
-          lastServers = await session.mcpServerStatus();
-          target = lastServers.find((s) => s.name === "wangs-ui");
-
-          setMcpServers(lastServers);
-          const newIdx = lastServers.findIndex((s) => s.name === "wangs-ui");
-          if (newIdx !== -1) {
-            setMcpPanelView((v) => (v.kind === "actions" || v.kind === "tools" || v.kind === "tool-detail" ? { ...v, serverIdx: newIdx } : v));
-          }
-
-          if (target?.status === "connected") {
-            break;
-          }
-
-          if (target?.status === "failed" && Date.now() - startTime > 2000) {
-            break;
-          }
-        }
-
-        if (target?.status === "connected") {
-          void fetchServerToolDefinitions(target, cwd).then((enrichedTools) => {
-            if (enrichedTools.length > 0) {
-              setMcpServers((prev) => {
-                const updated = [...prev];
-                const newIdx = updated.findIndex((s) => s.name === "wangs-ui");
-                if (newIdx !== -1) {
-                  updated[newIdx] = { ...updated[newIdx], tools: enrichedTools };
-                }
-                return updated;
-              });
-            }
-          });
-          chatStore.pushHost(`Connected to MCP server **wangs-ui** (@wangs-ui/mcp@${res.targetVersion}, ${target.tools?.length ?? 0} tools).`);
-        } else if (target?.error) {
-          chatStore.pushHost(`Failed to connect wangs-ui MCP server: ${target.error}`);
-        } else {
-          chatStore.pushHost(`Configured @wangs-ui/mcp@${res.targetVersion} in .mcp.json.`);
-        }
-      } catch (err) {
-        chatStore.pushHost(`Failed to sync wangs-ui MCP: ${err instanceof Error ? err.message : String(err)}`);
-      } finally {
-        if (mcpActionSeqRef.current === seq) {
-          setMcpLoading(false);
-        }
-      }
-      return;
-    }
 
     if (action === "Reconnect") {
       const seq = ++mcpActionSeqRef.current;
@@ -1020,7 +936,7 @@ export function App({
           return;
         }
         const server = mcpServers[mcpPanelView.serverIdx];
-        const actions = server ? getServerActions(server, cwd) : MCP_SERVER_ACTIONS;
+        const actions = server ? getServerActions(server) : MCP_SERVER_ACTIONS;
         if (key.name === "up") {
           setMcpPanelView({ ...mcpPanelView, selectedIdx: (mcpPanelView.selectedIdx - 1 + actions.length) % actions.length });
         } else if (key.name === "down") {
