@@ -152,7 +152,7 @@ export async function handleNewSession(ctx: CommandContext, arg?: string): Promi
 
 /** Unlike the silent startup sync (repl.tsx's `initChat()`, project-installed providers only, no
  *  network), this is explicit and user-triggered — so it's allowed to fetch a provider package on
- *  demand (into a wangs-code-owned cache, not the project's own node_modules) when the current
+ *  demand (into a wangscode-owned cache, not the project's own node_modules) when the current
  *  project doesn't have it installed, and report exactly what it found/did either way. */
 export async function handleDoctor(ctx: CommandContext): Promise<void> {
   ctx.chatStore.pushHost("🩺 Checking agent skill providers (TestSpectra, Wangs UI)...");

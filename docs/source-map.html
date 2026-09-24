@@ -464,7 +464,7 @@
   <body>
     <div class="shell">
       <nav class="rail">
-        <div class="rail-brand">wangs-agent <span class="ver">v0.3.2</span></div>
+        <div class="rail-brand">wangscode <span class="ver">v0.3.2</span></div>
         <p class="rail-sub">Source map & runtime flow</p>
 
         <div class="rail-group">
@@ -524,7 +524,7 @@
           <p class="eyebrow">Architecture reference</p>
           <h1>What every function does, and how a message actually flows through it</h1>
           <p>
-            wangs-agent is two systems sharing one process: a genuine multi-turn chat host (streams tokens, prompts for tool permission, behaves like
+            wangscode is two systems sharing one process: a genuine multi-turn chat host (streams tokens, prompts for tool permission, behaves like
             Claude Code) sitting on top of a deterministic, gate-driven feature-build pipeline that the chat can dispatch into but never talks its way
             around. This map traces every file — what it owns, what calls it, and what it calls next.
           </p>
@@ -599,7 +599,7 @@ sequenceDiagram
     participant SDK as query() session
     participant FBC as FeatureBuildController
 
-    U->>CLI: npx wangs-agent --project=.
+    U->>CLI: npx wangscode --project=.
     CLI->>REPL: runRepl({ cwd })
     REPL->>FBC: new FeatureBuildController(rl, cwd)
     REPL->>SESSOPT: buildSessionOptions(cwd, canUseTool, FBC)
@@ -718,7 +718,7 @@ flowchart TD
               <strong>Subagents and skills ship inside this package.</strong
               ><span
                 ><code>Options.agents</code> (subagents.ts) and <code>Options.plugins</code> (wangs-plugin/) mean a consumer repo carries zero
-                <code>.claude/agents</code> or project-specific <code>.claude/skills</code> — updating wangs-agent updates them.</span
+                <code>.claude/agents</code> or project-specific <code>.claude/skills</code> — updating wangscode updates them.</span
               >
             </li>
             <li>
@@ -1430,7 +1430,7 @@ flowchart TD
             <div class="filecard-body">
               <p class="filecard-note">
                 Loaded via <code>Options.plugins</code> — read by the model when it operates conversationally or when a pipeline prompt says "follow
-                the X skill." Nothing in wangs-agent's own code parses or enforces these; the real enforcement is gates.ts. Resolved from this
+                the X skill." Nothing in wangscode's own code parses or enforces these; the real enforcement is gates.ts. Resolved from this
                 package's own install location, so it works regardless of the target project's <code>cwd</code>.
               </p>
               <div class="fn-table-wrap">
@@ -1461,7 +1461,7 @@ flowchart TD
           </details>
         </section>
 
-        <footer>wangs-agent · standalone chat CLI for Wangs Foundation projects · this map reflects the source as of v0.3.2</footer>
+        <footer>wangscode · standalone chat CLI for Wangs Foundation projects · this map reflects the source as of v0.3.2</footer>
       </main>
     </div>
 

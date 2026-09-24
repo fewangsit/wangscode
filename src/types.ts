@@ -1,4 +1,4 @@
-// Local types for wangs-code. See ARCHITECTURE decisions in the approved
+// Local types for wangscode. See ARCHITECTURE decisions in the approved
 // plan — this file has no behavior of its own, only shapes shared across
 // the other modules.
 

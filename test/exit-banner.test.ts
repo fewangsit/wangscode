@@ -11,7 +11,7 @@ describe("ExitBanner", () => {
     };
 
     try {
-      printExitBanner("test-session-1234", "wangs-code");
+      printExitBanner("test-session-1234", "wangscode");
     } finally {
       console.log = origLog;
     }
@@ -19,7 +19,7 @@ describe("ExitBanner", () => {
     const output = logs.join("\n");
     expect(output).toContain("Wangs Code");
     expect(output).toContain("Session ID: test-session-1234");
-    expect(output).toContain("wangs-code --resume test-session-1234");
+    expect(output).toContain("wangscode --resume test-session-1234");
     // Confirms logo blocks are omitted
     expect(output).not.toContain("████");
   });

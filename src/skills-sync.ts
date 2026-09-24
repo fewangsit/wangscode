@@ -39,7 +39,7 @@ interface SkillItem {
 // package itself), so writing them into the project repo would mean either committing generated,
 // package-derived content or having to remember to gitignore it. Installing once, globally,
 // avoids both — nothing ever lands inside any project's git tree, and every project that has
-// wangs-code + the provider package installed benefits from the same synced skill without
+// wangscode + the provider package installed benefits from the same synced skill without
 // re-installing per repo.
 const GLOBAL_SKILLS_DIR = path.join(os.homedir(), ".claude", "skills");
 
@@ -49,11 +49,11 @@ function resolveInstalledPackageDir(baseDir: string, packageName: string): strin
   return fs.existsSync(path.join(dir, "package.json")) ? dir : null;
 }
 
-// On-demand fetch target for a provider NOT installed in the current project — a wangs-code-owned
+// On-demand fetch target for a provider NOT installed in the current project — a wangscode-owned
 // cache, not the project's own node_modules, so this never touches the project's package.json or
 // lockfile. Reused across projects/sessions: once `@testspectra/skills` has been fetched here for
 // any project, `/doctor` in a project that never installed it directly still finds it instantly.
-const SKILL_PROVIDER_CACHE_ROOT = path.join(os.homedir(), ".cache", "wangs-code", "skill-providers");
+const SKILL_PROVIDER_CACHE_ROOT = path.join(os.homedir(), ".cache", "wangscode", "skill-providers");
 
 function cacheInstallDirFor(packageName: string): string {
   return path.join(SKILL_PROVIDER_CACHE_ROOT, packageName.replace("/", "__"));
@@ -88,7 +88,7 @@ interface ProviderResolution {
  * Locates a usable copy of a skill-provider package: the project's own install first (fast, no
  * network), then a previously on-demand-fetched cache copy, then — only when `allowFetch` is true —
  * a fresh on-demand fetch into that cache. `allowFetch` is false for the silent startup sync (never
- * block/slow down opening wangs-code on a network call) and true for `/doctor` (an explicit,
+ * block/slow down opening wangscode on a network call) and true for `/doctor` (an explicit,
  * user-triggered "make sure everything's set up" action, where waiting on a fetch is expected).
  */
 async function resolveProviderDir(cwd: string, packageName: string, allowFetch: boolean): Promise<ProviderResolution | null> {
@@ -166,7 +166,7 @@ async function syncProviders(cwd: string, allowFetch: boolean): Promise<SkillSyn
 
 /**
  * Fast path: syncs skills for every known provider that's already physically installed in the
- * current project — no network calls, safe to run on every wangs-code startup (see repl.tsx's
+ * current project — no network calls, safe to run on every wangscode startup (see repl.tsx's
  * `initChat()`). Keeps `~/.claude/skills` in sync with whatever version of the provider package
  * the current project has installed, the same way `@testspectra/skills update` would, without ever
  * blocking startup on a fetch.
@@ -177,8 +177,8 @@ export function syncProjectSkillProviders(cwd: string): Promise<SkillSyncResult[
 
 /**
  * Full path used by the `/doctor` command: same sync, but for a provider not installed in the
- * current project, fetches it on demand into a wangs-code-owned cache
- * (`~/.cache/wangs-code/skill-providers`) instead of skipping it — without touching the project's
+ * current project, fetches it on demand into a wangscode-owned cache
+ * (`~/.cache/wangscode/skill-providers`) instead of skipping it — without touching the project's
  * own `package.json`/lockfile. An explicit, user-triggered action, so waiting on a network fetch
  * here is expected (unlike the silent startup sync above).
  */

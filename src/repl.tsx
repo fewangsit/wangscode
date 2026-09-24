@@ -33,13 +33,13 @@ export interface ReplParams {
 // Same file cli.ts's own readPackageJson() reads (see that file's comment on why PACKAGE_ROOT,
 // not a static import) — read once here too: `version` for the welcome banner's badge, `name` for
 // the exit banner's copy-pasteable `<name> --resume <id>` line (so it stays correct even if the
-// package is ever renamed again, rather than hardcoding "wangs-code" a second time).
+// package is ever renamed again, rather than hardcoding "wangscode" a second time).
 function getPackageInfo(): { name: string; version: string } {
   try {
     const raw = readFileSync(path.join(PACKAGE_ROOT, "package.json"), "utf8");
     return JSON.parse(raw) as { name: string; version: string };
   } catch {
-    return { name: "wangs-code", version: "0.0.0" };
+    return { name: "wangscode", version: "0.0.0" };
   }
 }
 

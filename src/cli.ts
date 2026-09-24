@@ -18,11 +18,11 @@ const HELP = `Wangs Code — standalone interactive chat CLI for Wangs Foundatio
 Requires Bun (https://bun.sh) — the terminal UI's native binding only runs under Bun's runtime.
 
 Usage:
-  wangs-code [--project=<path>]
-  wangs-code --resume <session-id>
-  wangs-code --update | -u
-  wangs-code --version | -v
-  wangs-code --help | -h
+  wangscode [--project=<path>]
+  wangscode --resume <session-id>
+  wangscode --update | -u
+  wangscode --version | -v
+  wangscode --help | -h
 
 Starts an interactive chat session in the terminal. Behaves like a general
 coding assistant; type /create-feature to run the deterministic, gated
@@ -136,7 +136,7 @@ async function main(): Promise<void> {
   // node, ignoring the shebang). Fails with a clear message instead of the terminal UI's own
   // cryptic native-FFI stack trace.
   if (typeof (globalThis as { Bun?: unknown }).Bun === "undefined") {
-    console.error("wangs-code requires Bun (https://bun.sh) — run it with `bun wangs-code` or `bunx wangs-code`, not `node`.");
+    console.error("wangscode requires Bun (https://bun.sh) — run it with `bun wangscode` or `bunx wangscode`, not `node`.");
     process.exit(1);
   }
 

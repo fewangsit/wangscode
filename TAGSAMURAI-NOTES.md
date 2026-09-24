@@ -1,7 +1,7 @@
-# Catatan Perbandingan: tagsamurai-monorepo vs Wangs Foundation (wangs-agent)
+# Catatan Perbandingan: tagsamurai-monorepo vs Wangs Foundation (wangscode)
 
 **Tujuan dokumen ini**: mencatat keputusan arsitektur yang diambil saat memigrasikan/mengadaptasi
-skill, subagent, dan rules dari `tagsamurai-monorepo` ke `wangs-agent` — supaya kalau ada yang
+skill, subagent, dan rules dari `tagsamurai-monorepo` ke `wangscode` — supaya kalau ada yang
 mempertanyakan kenapa sesuatu berubah (atau kenapa sesuatu _sengaja_ tidak dibawa), alasannya sudah
 tercatat dengan bukti konkret, bukan harus diingat-ingat atau ditebak ulang.
 
@@ -45,7 +45,7 @@ maksudnya, dan kalau ada yang komplain "kok validator jadi susah di-share", jawa
 ## 2. Penempatan validator: tabel tiga-tingkat (bukan folder baru sejajar `data/`/`ui/`)
 
 Mengikuti pola yang sudah ada di skill `component-spliting` untuk komponen, diterapkan ke validator
-(diupdate di `feature-workflow` skill, Step 3 — commit `wangs-agent@0.3.3`):
+(diupdate di `feature-workflow` skill, Step 3 — commit `wangscode@0.3.3`):
 
 | Cakupan validator                                                 | Lokasi                               |
 | ----------------------------------------------------------------- | ------------------------------------ |
@@ -73,7 +73,7 @@ ini ada — bukan argumen untuk menghidupkannya lagi.
 
 Dicatat sebagai perbedaan yang diketahui, bukan diselesaikan:
 
-|                              | tagsamurai (`.agents/agents/`, `.agents/rules/mcp-subagent-protocol.md`)                     | wangs-agent (`src/subagents.ts`)                                                             |
+|                              | tagsamurai (`.agents/agents/`, `.agents/rules/mcp-subagent-protocol.md`)                     | wangscode (`src/subagents.ts`)                                                               |
 | ---------------------------- | -------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------- |
 | Penamaan subagent            | `wangs-ui_querier`, `ui_design_reader`, `functional_reader`, `test_case_reader` (underscore) | `wangs-ui-querier`, `ui-design-reader`, `functional-reader`, `test-case-reader` (kebab-case) |
 | Nama tool MCP yang dipanggil | `list-all-documentation`, `get-documentation`, `get-documentation-for-story`, `query_graph`  | `mcp__wangs-ui__docs-list`, `mcp__wangs-ui__docs-show`, `mcp__wangs-ui__docs-show-story`     |
@@ -91,7 +91,7 @@ manggil tool yang tidak ada, cek versi `@wangs-ui/mcp` yang ter-resolve dulu seb
 `npx -y --registry=http://192.168.1.102:4873/ @wangs-ui/mcp@latest` — IP registry privat di-hardcode.
 Dicek langsung ke `registry.npmjs.org`: `@wangs-ui/mcp` **tidak ada** di registry publik (`{"error":"Not found"}`).
 
-**Keputusan** (dikonfirmasi user): `wangs-agent/src/subagents.ts` **tidak** hardcode `--registry=`
+**Keputusan** (dikonfirmasi user): `wangscode/src/subagents.ts` **tidak** hardcode `--registry=`
 apa pun — mengandalkan `.npmrc` konsumer untuk scope `@wangs-ui`, persis seperti syarat install
 `@wangs-ui/react-core` dkk lainnya di proyek Wangs Foundation manapun. Alasan: IP `192.168.1.102` cuma
 valid di jaringan/mesin tertentu dengan uptime terbatas — bukan hostname stabil, jadi tidak layak
@@ -99,24 +99,24 @@ di-hardcode ke package yang dipublish. Untuk development tanpa server privat yan
 `wangs-ui-react-main` dan publish ke Verdaccio lokal.
 
 Kalau ada laporan `wangs-ui-querier` gagal connect MCP dengan pesan package tidak ditemukan — itu
-bukan bug, itu berarti `.npmrc` proyek yang menjalankan `wangs-agent` belum mengarahkan scope
+bukan bug, itu berarti `.npmrc` proyek yang menjalankan `wangscode` belum mengarahkan scope
 `@wangs-ui` ke registry privat yang benar.
 
 ---
 
-## 6. Rules tagsamurai yang **tidak** dibawa ke wangs-agent, dan kenapa
+## 6. Rules tagsamurai yang **tidak** dibawa ke wangscode, dan kenapa
 
 Sudah dicek satu-satu isinya (bukan diasumsikan tidak relevan):
 
-| File di tagsamurai       | Kenapa tidak dibawa                                                                                                                                                                                                                                                  |
-| ------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `model.md`               | Seluruh isinya tentang Model layer 3-tingkat yang memang dihapus — lihat §1 dan §3                                                                                                                                                                                   |
-| `ui-slicing.md`          | Proses lebih berat: implementation-plan-first + approval gate manual per section, "Model Entity Sync" — semua asumsi 3-layer. `feature-workflow` skill wangs-agent punya proses sendiri (2-layer, approval gate per-fase lewat pipeline `needs_input`, bukan manual) |
-| `code-comments.md`       | Isinya ("jangan tambah komentar kecuali diminta") sudah jadi perilaku default assistant, tidak perlu file rule terpisah                                                                                                                                              |
-| `datatable.md`           | Lebih spesifik dari `design-system` skill (mewajibkan `useDataTableFetch` placeholder dst.) — belum ada padanannya di wangs-agent, **kandidat untuk ditambahkan kalau DataTable mulai dipakai di fitur nyata**                                                       |
-| `wangs-ui-components.md` | Isinya ("selalu cek MCP sebelum pakai prop") sudah tercakup di persona + `design-system` skill                                                                                                                                                                       |
-| `graphify.md`            | Bukan hal spesifik proyek — itu skill level akun pengguna (`~/.claude/skills/graphify`)                                                                                                                                                                              |
-| `test.md`                | Proses e2e berbeda total: tagsamurai pakai Playwright-style `.page.ts` manual dengan proses per-scenario approval; wangs-agent pakai TestSpectra ambient-global (`feature-workflow` skill, Step 2)                                                                   |
+| File di tagsamurai       | Kenapa tidak dibawa                                                                                                                                                                                                                                                |
+| ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `model.md`               | Seluruh isinya tentang Model layer 3-tingkat yang memang dihapus — lihat §1 dan §3                                                                                                                                                                                 |
+| `ui-slicing.md`          | Proses lebih berat: implementation-plan-first + approval gate manual per section, "Model Entity Sync" — semua asumsi 3-layer. `feature-workflow` skill wangscode punya proses sendiri (2-layer, approval gate per-fase lewat pipeline `needs_input`, bukan manual) |
+| `code-comments.md`       | Isinya ("jangan tambah komentar kecuali diminta") sudah jadi perilaku default assistant, tidak perlu file rule terpisah                                                                                                                                            |
+| `datatable.md`           | Lebih spesifik dari `design-system` skill (mewajibkan `useDataTableFetch` placeholder dst.) — belum ada padanannya di wangscode, **kandidat untuk ditambahkan kalau DataTable mulai dipakai di fitur nyata**                                                       |
+| `wangs-ui-components.md` | Isinya ("selalu cek MCP sebelum pakai prop") sudah tercakup di persona + `design-system` skill                                                                                                                                                                     |
+| `graphify.md`            | Bukan hal spesifik proyek — itu skill level akun pengguna (`~/.claude/skills/graphify`)                                                                                                                                                                            |
+| `test.md`                | Proses e2e berbeda total: tagsamurai pakai Playwright-style `.page.ts` manual dengan proses per-scenario approval; wangscode pakai TestSpectra ambient-global (`feature-workflow` skill, Step 2)                                                                   |
 
 **`datatable.md` ditandai sebagai satu-satunya yang genuinely mungkin masih kurang** — kalau ada fitur
 nyata yang pakai `DataTable` dan sering ada masalah prop/column yang tidak terverifikasi, itu alasan
@@ -124,11 +124,11 @@ untuk menambahkan versi 2-layer dari rule ini, bukan indikasi migrasi ini salah.
 
 ---
 
-## Perubahan terkait di `wangs-agent` (untuk ditelusuri commit-nya kalau perlu)
+## Perubahan terkait di `wangscode` (untuk ditelusuri commit-nya kalau perlu)
 
 - `973fb57` — Merge pipeline `agentic-feature-loop` in-process
 - `40a8447` — oxlint + oxfmt
-- `973fb57`/`e9e0aa8` — Bundle subagent (`Options.agents`) & skill (`Options.plugins`) native ke wangs-agent
+- `973fb57`/`e9e0aa8` — Bundle subagent (`Options.agents`) & skill (`Options.plugins`) native ke wangscode
 - `e9e0aa8` — Fix registry MCP wangs-ui (lihat §5)
 - `f301109` — Fix mermaid syntax error (tidak terkait tagsamurai, cuma dokumentasi internal)
 - commit terbaru — Validator placement table (lihat §2)

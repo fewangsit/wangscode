@@ -333,7 +333,7 @@ export function detectProjectWangsUiVersion(cwd: string): WangsUiVersionInfo | n
  * Resolves the target registry URL for @wangs-ui packages:
  * 1. WANGS_CODE_REGISTRY environment variable
  * 2. .npmrc registry= or @wangs-ui:registry= (checked in cwd, PACKAGE_ROOT, and ~/.npmrc)
- * 3. "publishRegistry" field from wangs-code package.json
+ * 3. "publishRegistry" field from wangscode package.json
  */
 export function getMcpTargetRegistry(cwd: string): string | undefined {
   if (process.env.WANGS_CODE_REGISTRY) {

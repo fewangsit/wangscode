@@ -158,7 +158,7 @@ export async function fetchStdioMcpTools(command: string, args: string[], cwd?: 
           params: {
             protocolVersion: "2024-11-05",
             capabilities: {},
-            clientInfo: { name: "wangs-code", version: "1.0.0" },
+            clientInfo: { name: "wangscode", version: "1.0.0" },
           },
         }) + "\n",
       );

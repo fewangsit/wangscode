@@ -279,7 +279,7 @@ const THINKING_FRAMES = ["💭   ", "💭 . ", "💭 ..", "💭..."];
 const THINKING_FRAME_MS = 350;
 
 // Purely cosmetic — same spirit as Claude Code's own rotating verb ("Roosting…", etc.) but this is
-// wangs-code's own list, not a copy of theirs (we don't have their actual word list, only a couple
+// wangscode's own list, not a copy of theirs (we don't have their actual word list, only a couple
 // of example screenshots to go on). Picked deterministically from the current phase (see
 // `phaseKey` below), NOT a timer — a fixed-interval rotation changes words on a clock that has
 // nothing to do with what's actually happening, which reads as noise once you notice it (a real

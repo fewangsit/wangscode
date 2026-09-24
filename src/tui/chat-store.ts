@@ -103,7 +103,7 @@ export class ChatStore {
   /** Call once the turn has genuinely finished (no longer waiting, nothing streaming, no tool
    *  running) — see App.tsx's `isStreaming` transition to false. Pushes a permanent
    *  `turn-complete` block (not a 4-second toast that vanished for good once you closed the app —
-   *  Claude Code itself keeps this line in the transcript, so wangs-code should too) recording how
+   *  Claude Code itself keeps this line in the transcript, so wangscode should too) recording how
    *  long the turn actually took, using `turnStore`'s own `startedAt` before clearing it. */
   endTurn(): void {
     const turn = this.turnStore.get();

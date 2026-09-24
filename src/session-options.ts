@@ -56,9 +56,9 @@ export function buildSessionOptions(
       ...DOCS_KNOWLEDGE_MCP_SERVERS,
       ...(wangsUiMcp ? { "wangs-ui": wangsUiMcp } : {}),
     },
-    // Project-specific skills bundled inside wangs-code itself (see
+    // Project-specific skills bundled inside wangscode itself (see
     // wangs-plugin/) — a consumer repo needs zero .claude/skills config for
-    // these; updating wangs-code updates the skill content.
+    // these; updating wangscode updates the skill content.
     plugins: [{ type: "local", path: WANGS_PLUGIN_ROOT }],
     // Subagents defined programmatically (Options.agents, confirmed real in
     // sdk.d.ts) instead of .claude/agents/*.md files a consumer repo would

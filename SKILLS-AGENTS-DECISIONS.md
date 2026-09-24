@@ -1,6 +1,6 @@
 # Keputusan Skill / Subagent / Rules — Log
 
-Catatan hidup: setiap keputusan soal skill, subagent, atau rules di `wangs-agent` dicatat di
+Catatan hidup: setiap keputusan soal skill, subagent, atau rules di `wangscode` dicatat di
 sini saat diputuskan — bukan ditulis ulang dari ingatan nanti. Urut kronologis, entri terbaru
 di bawah. Status tiap entri: **DIPUTUSKAN** (sudah diimplementasikan), **TERBUKA** (rekomendasi
 sudah diberikan, belum dikonfirmasi user), atau **DITINGGALKAN** (sempat diputuskan, lalu
@@ -13,7 +13,7 @@ dibatalkan — lihat §"Dibatalkan").
 **Status: DIPUTUSKAN.** 4 subagent (`wangs-ui-querier`, `ui-design-reader`, `functional-reader`,
 `test-case-reader`) didefinisikan sebagai objek `AgentDefinition` langsung di
 `src/subagents.ts`, bukan file markdown yang harus di-generate ulang per proyek konsumen.
-Alasan: consumer repo butuh nol config untuk fitur ini — cukup install `wangs-agent`, tidak
+Alasan: consumer repo butuh nol config untuk fitur ini — cukup install `wangscode`, tidak
 perlu `.claude/agents/`.
 
 ## 2. Skill dibundel via `Options.plugins`, bukan `.claude/skills/*/SKILL.md`
@@ -21,7 +21,7 @@ perlu `.claude/agents/`.
 **Status: DIPUTUSKAN.** 4 skill proyek-spesifik (`feature-workflow`, `slicing-review`,
 `design-system`, `component-spliting`) dibundel fisik sebagai file `SKILL.md` di
 `wangs-plugin/`, dimuat lewat `Options.plugins`. Sama alasannya dengan §1 — zero-config di
-consumer repo, dan update `wangs-agent` = update skill-nya, tidak perlu sync manual per
+consumer repo, dan update `wangscode` = update skill-nya, tidak perlu sync manual per
 proyek (`pnpm skills:sync` di `wangs-monorepo-foundation` sudah dipangkas jadi cuma
 menyisakan sync untuk skill `@wangs-ui/skills`).
 
@@ -51,18 +51,18 @@ screen-only → co-located di `ui/screens/[Screen]/`; lintas-screen satu fitur �
 placement table yang sudah ada di `component-spliting` skill untuk komponen. Detail lengkap dan
 bukti kode ada di `TAGSAMURAI-NOTES.md` §1–2.
 
-## 6. 8 skill milik `@wangs-ui/skills` — TIDAK dibundel ke `wangs-agent`
+## 6. 8 skill milik `@wangs-ui/skills` — TIDAK dibundel ke `wangscode`
 
 **Status: TERBUKA — rekomendasi sudah diberikan, belum ada konfirmasi eksplisit dari user.**
 
 Ditanya user: "mending dibundle dan di-manage di dalam sini?" Rekomendasi saya: **tidak** —
 `@wangs-ui/skills` (`create-form`, `data-table`, `dialog-modal`, `i18n-usage`,
 `layout-navigation`, `wangs-ui-components`, dan 2 yang sekarang sudah pindah status, lihat §7)
-dimiliki & dirilis tim Wangs UI React sendiri, siklus rilis terpisah dari `wangs-agent`, dan
+dimiliki & dirilis tim Wangs UI React sendiri, siklus rilis terpisah dari `wangscode`, dan
 paketnya sudah punya distribusi sendiri yang lebih luas (Antigravity, OpenCode, Kilo — bukan
-cuma Claude Code) yang tidak terbantu kalau di-vendor ke `wangs-agent`. Risiko: setiap
-`@wangs-ui/skills` rilis, `wangs-agent` juga harus rilis ulang untuk konten yang bukan
-miliknya, dan makin jarang `wangs-agent` di-build ulang, makin basi (bukti nyata: isinya
+cuma Claude Code) yang tidak terbantu kalau di-vendor ke `wangscode`. Risiko: setiap
+`@wangs-ui/skills` rilis, `wangscode` juga harus rilis ulang untuk konten yang bukan
+miliknya, dan makin jarang `wangscode` di-build ulang, makin basi (bukti nyata: isinya
 sekarang masih pakai nama tool MCP versi lama).
 
 Catatan teknis yang ditemukan sambil investigasi (relevan kalau opsi ini dibuka lagi nanti):
@@ -89,7 +89,7 @@ Disuntik ke **dua tempat**:
 - `session-options.ts` — chat interaktif, digabung dengan `WANGS_PERSONA_APPEND`.
 - `pipeline/agent-runner.ts` — **bug nyata ditemukan sambil implementasi**: file ini (satu-
   satunya pemanggil model untuk fase pipeline) sebelumnya **tidak punya `systemPrompt` sama
-  sekali**. Tidak ada rule `wangs-agent` apa pun yang pernah nyampe ke fase yang justru
+  sekali**. Tidak ada rule `wangscode` apa pun yang pernah nyampe ke fase yang justru
   menulis kode (`data-layer`, `test-contract`, `ui-slice`, `connect`, `review`) — cuma nyampe
   ke chat ad-hoc. Sudah diperbaiki di commit yang sama.
 
@@ -103,17 +103,17 @@ spesifik malah 0% MCP.
 **Status: DIPUTUSKAN — dikonfirmasi live, bukan asumsi.** `tagsamurai-monorepo/.agents/rules/graphify.md`
 mengarahkan pemakaian tool `graphify` (knowledge graph codebase) — tapi itu skill level
 **akun** developer (`~/.claude/skills/graphify`), bukan konvensi Wangs Foundation. Dites
-langsung: jalankan sesi `wangs-agent` nyata lewat `session-options.ts`, panggil
+langsung: jalankan sesi `wangscode` nyata lewat `session-options.ts`, panggil
 `q.supportedCommands()` — `graphify` **muncul otomatis**, ditandai `(user)`:
 
 ```json
 { "name": "graphify", "description": "Use for any question about a codebase...", ... }
 ```
 
-Kesimpulan: `wangs-agent` tidak perlu bundel apa pun untuk ini — SDK session-nya sudah
+Kesimpulan: `wangscode` tidak perlu bundel apa pun untuk ini — SDK session-nya sudah
 mewarisi skill level akun developer yang menjalankannya (`settingSources` tidak dibatasi di
 `session-options.ts`, jadi default "semua sumber dimuat" berlaku). Membundel graphify ke
-`wangs-agent` justru salah asumsi — mengasumsikan setiap pengguna `wangs-agent` pasti punya
+`wangscode` justru salah asumsi — mengasumsikan setiap pengguna `wangscode` pasti punya
 graphify ter-install di mesinnya sendiri, padahal itu murni setup personal, bukan sesuatu
 yang Wangs Foundation proyek-nya syaratkan.
 
@@ -132,8 +132,8 @@ tiap screen punya teks user-facing — tapi **siapa pemilik kontennya**):
   tetap berlaku walau proyeknya nol komponen Wangs UI.
 - `i18n-usage`: seluruhnya tentang API `@wangs-ui/react-i18n` spesifik (`useI18n()`,
   `useLocaleFormatter()`, `WangsUiI18nProvider`, backend JIT) — kategori sama dengan
-  `data-table`/`dialog-modal`, dimiliki & dirilis tim Wangs UI React, bukan `wangs-agent`.
-  Risiko sama seperti §6: `wangs-agent` harus ikut rilis ulang tiap `@wangs-ui/react-i18n`
+  `data-table`/`dialog-modal`, dimiliki & dirilis tim Wangs UI React, bukan `wangscode`.
+  Risiko sama seperti §6: `wangscode` harus ikut rilis ulang tiap `@wangs-ui/react-i18n`
   berubah API, untuk konten yang bukan miliknya.
 
 Jaring pengaman yang sudah ada tanpa perlu bundling penuh: skill `design-system` (sudah
@@ -150,7 +150,7 @@ menghasilkan kode sesuai arsitektur itu." Pertanyaan ini muncul setelah saya mel
 
 Bukti konkret yang langsung ditemukan sambil investigasi (bukan hipotetis): isi
 `wangs-monorepo-foundation/docs/01-overview.md` **masih** bilang selector cuma
-`aria-label`/`accessibilityLabel` — persis versi basi yang baru diperbaiki di skill `wangs-agent`
+`aria-label`/`accessibilityLabel` — persis versi basi yang baru diperbaiki di skill `wangscode`
 beberapa commit sebelumnya (§ fix TestSpectra `title`/`aria-labelledby`). Dua sumber yang
 seharusnya konsisten sudah drift dalam hitungan menit. Konfirmasi juga: isi `01-overview.md` dan
 `03-feature-pattern.md` genuinely generik (pakai "catalog" sebagai contoh placeholder, scope
@@ -265,12 +265,12 @@ fully-qualified), plus fitur baru yang tidak ada di source manapun:
 di `architecture-overview.md`, `packages.md`, `feature-pattern.md`, `conventions.md`,
 `data-and-server-state.md`, `error-handling.md` — semua contoh kode navigasi lama (`useNavigate`,
 `navigate(Routes.X.Y)`, `FeatureGraphBuilder`) diganti API nyata `@wangs-ui/react-navigation`.
-Dipublish sebagai `wangs-agent@0.4.3` ke Verdaccio lokal.
+Dipublish sebagai `wangscode@0.4.3` ke Verdaccio lokal.
 
 **Belum diverifikasi** (diwariskan dari pengembangan package-nya sendiri): tidak ada klik-through
 browser atau tap-through Expo Go nyata terhadap `@wangs-ui/react-navigation` — verifikasi cuma
 sampai type-check + build + unit test terhadap package yang benar-benar dipublish. Kalau pipeline
-`wangs-agent` mulai menghasilkan kode yang memakai rule ini, perilaku runtime-nya masih perlu
+`wangscode` mulai menghasilkan kode yang memakai rule ini, perilaku runtime-nya masih perlu
 dibuktikan lewat feature nyata, bukan diasumsikan benar dari dokumentasi.
 
 ---
@@ -319,7 +319,7 @@ hasil `dist/` yang sebenarnya (bukan cuma dari source) — `bundler` bahkan men-
 ekspresi `PACKAGE_ROOT` yang sama di seluruh chunk, mengonfirmasi tidak ada sisa perhitungan lain
 yang salah.
 
-Dipublish sebagai `wangs-agent@0.4.4` ke Verdaccio lokal.
+Dipublish sebagai `wangscode@0.4.4` ke Verdaccio lokal.
 
 ---
 

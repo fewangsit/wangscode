@@ -6,7 +6,7 @@
 //
 // This used to be a CLI (`agentic-feature-loop build-feature`) with its own
 // process, printing JSON to stdout and calling process.exit() at every stop
-// point. Merged directly into wangs-code so there is one source instead of
+// point. Merged directly into wangscode so there is one source instead of
 // a subprocess boundary — every process.exit() below became a return value
 // instead; the phase/gate/retry logic itself is unchanged.
 import path from "node:path";
@@ -171,7 +171,7 @@ export async function runFeatureBuildPipeline(args: FeatureBuildArgs): Promise<F
 
   // Deterministic, zero-model-call, and unconditional on every call (including resumes) — see
   // scaffold.ts. Package-skeleton creation used to be a separate manual `pnpm create-feature`
-  // step run before wangs-code at all; folding it in here means /create-feature is the one real
+  // step run before wangscode at all; folding it in here means /create-feature is the one real
   // entry point. Idempotent: a no-op once packages/features/<slug>/ already exists.
   scaffoldFeaturePackage(repoRoot, scope, args.featureSlug);
 

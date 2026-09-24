@@ -1,6 +1,6 @@
 # Dev Notes — Local Environment Gotchas
 
-Catatan operasional untuk development di repo ini — bukan tentang kode `wangs-agent`
+Catatan operasional untuk development di repo ini — bukan tentang kode `wangscode`
 sendiri, tapi tentang jebakan lingkungan lokal yang sudah ketemu, supaya tidak perlu
 didebug ulang dari nol kalau kejadian lagi.
 
@@ -51,4 +51,4 @@ untuk pertama kalinya, baru dikembalikan ke `http://localhost:4873/` setelah itu
 
 ---
 
-Ditulis: 2026-09-19, saat publish `wangs-agent@0.3.4`.
+Ditulis: 2026-09-19, saat publish `wangscode@0.3.4`.

@@ -1,5 +1,5 @@
 {
   "name": "wangs-foundation",
   "version": "0.4.0",
-  "description": "Wangs Foundation project-specific skills, bundled with wangs-code so consumer repos need zero .claude/skills config for these."
+  "description": "Wangs Foundation project-specific skills, bundled with wangscode so consumer repos need zero .claude/skills config for these."
 }
