@@ -18,6 +18,8 @@ describe("SessionStatusStore", () => {
     });
     sessionStatus.accumulateUsage({
       "claude-opus-4": {
+        contextWindow: 200000,
+        maxOutputTokens: 8192,
         inputTokens: 100,
         outputTokens: 200,
         thinkingTokens: 50,

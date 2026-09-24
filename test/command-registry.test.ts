@@ -5,7 +5,9 @@ import { describe, expect, mock, test } from "bun:test";
 // imported, so /resume can be exercised without a real project directory or session files on disk.
 const listSessionsMock = mock(async () => [] as Array<{ sessionId: string; summary: string; lastModified: number; firstPrompt?: string }>);
 const renameSessionMock = mock(async () => undefined);
-mock.module("@anthropic-ai/claude-agent-sdk", () => ({
+const actualEngine = await import("../src/engine/index.ts");
+mock.module("../src/engine/index.ts", () => ({
+  ...actualEngine,
   listSessions: listSessionsMock,
   renameSession: renameSessionMock,
 }));

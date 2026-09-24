@@ -15,7 +15,7 @@ describe("WelcomeBanner", () => {
     mkdirSync(tempDir, { recursive: true });
 
     const sessionStatus = new SessionStatusStore();
-    sessionStatus.seedKnownConfig({ model: "claude-sonnet-5", cwd: tempDir });
+    sessionStatus.seedKnownConfig({ model: "claude-sonnet-5", cwd: tempDir, permissionMode: "default" });
 
     const testRenderer = await createTestRenderer({ width: 100, height: 26 });
     const root = createRoot(testRenderer.renderer);
@@ -45,7 +45,7 @@ describe("WelcomeBanner", () => {
     writeFileSync(path.join(coreDir, "package.json"), JSON.stringify({ version: "1.0.64" }), "utf8");
 
     const sessionStatus = new SessionStatusStore();
-    sessionStatus.seedKnownConfig({ model: "claude-sonnet-5", cwd: tempDir });
+    sessionStatus.seedKnownConfig({ model: "claude-sonnet-5", cwd: tempDir, permissionMode: "default" });
 
     const testRenderer = await createTestRenderer({ width: 100, height: 26 });
     const root = createRoot(testRenderer.renderer);

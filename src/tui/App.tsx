@@ -8,8 +8,8 @@ import {
   type ScrollBoxRenderable,
   type TextareaRenderable,
 } from "@opentui/core";
-import type { EffortLevel, McpServerStatus, ModelInfo, Query, SDKControlGetUsageResponse, SessionStore } from "@anthropic-ai/claude-agent-sdk";
-import { listSessions } from "@anthropic-ai/claude-agent-sdk";
+import type { EffortLevel, McpServerStatus, ModelInfo, Query, SDKControlGetUsageResponse, SessionStore } from "../engine/index.ts";
+import { listSessions } from "../engine/index.ts";
 
 import { spawn } from "node:child_process";
 

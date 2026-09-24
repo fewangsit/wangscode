@@ -1,3 +1,4 @@
+import { describe, expect, test } from "bun:test";
 import { capitalize, formatToolCall, formatToolLabel, isJsonString, parseToolName, shortenPath, summarizeJson } from "../../src/tui/format.ts";
 
 describe("format utilities", () => {

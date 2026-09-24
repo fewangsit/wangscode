@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import type { McpServerStatus } from "@anthropic-ai/claude-agent-sdk";
+import type { McpServerStatus } from "../src/engine/index.ts";
 
 import { clearMcpToolCache, enrichMcpServersWithTools, fetchServerToolDefinitions } from "../src/mcp-tools.ts";
 

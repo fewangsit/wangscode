@@ -1,4 +1,4 @@
-import type { EffortLevel, ModelInfo } from "@anthropic-ai/claude-agent-sdk";
+import type { EffortLevel, ModelInfo } from "../engine/index.ts";
 
 import { capitalize } from "./format.ts";
 import { BG, CARD_BORDER, GOLD } from "./theme.ts";

@@ -227,7 +227,7 @@ describe("mcp-sync", () => {
         // Fast-fail env — a stdio server that hangs trying to reach a dead registry blocks the
         // WHOLE session (confirmed via a real SDK repro), unlike an unreachable HTTP server which
         // fails fast and non-blocking. These make npx give up in ~3s instead of hanging.
-        const env = config && "env" in config ? config.env : undefined;
+        const env = (config && "env" in config ? config.env : undefined) as Record<string, string> | undefined;
         expect(env?.npm_config_fetch_timeout).toBe("3000");
         expect(env?.npm_config_fetch_retries).toBe("0");
       } finally {

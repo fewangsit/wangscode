@@ -1,4 +1,4 @@
-import type { McpServerStatus } from "@anthropic-ai/claude-agent-sdk";
+import type { McpServerStatus } from "../engine/index.ts";
 import type { ScrollBoxRenderable } from "@opentui/core";
 
 import { BG, CARD_BORDER, GOLD } from "./theme.ts";

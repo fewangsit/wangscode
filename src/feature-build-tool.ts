@@ -1,4 +1,4 @@
-import { createSdkMcpServer, tool } from "@anthropic-ai/claude-agent-sdk";
+import { createSdkMcpServer, tool } from "./engine/index.ts";
 import { z } from "zod";
 
 import type { FeatureBuildController } from "./slash-commands.ts";

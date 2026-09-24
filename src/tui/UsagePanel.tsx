@@ -1,4 +1,4 @@
-import type { SDKControlGetUsageResponse } from "@anthropic-ai/claude-agent-sdk";
+import type { SDKControlGetUsageResponse } from "../engine/index.ts";
 
 import { CARD_BORDER, GOLD, ROSE } from "./theme.ts";
 

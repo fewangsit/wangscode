@@ -1,4 +1,4 @@
-import type { SDKUserMessage } from "@anthropic-ai/claude-agent-sdk";
+import type { SDKUserMessage } from "./engine/index.ts";
 
 // Bridges the TUI input router's event-driven line submissions (see tui/input-router.ts) into the
 // AsyncIterable<SDKUserMessage> `query()` expects when `prompt` is a stream — this is what keeps

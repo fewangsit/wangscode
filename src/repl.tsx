@@ -4,8 +4,8 @@ import path from "node:path";
 import { Pool } from "pg";
 import { createCliRenderer } from "@opentui/core";
 import { createRoot } from "@opentui/react";
-import { getSessionMessages, query } from "@anthropic-ai/claude-agent-sdk";
-import type { Query } from "@anthropic-ai/claude-agent-sdk";
+import { getSessionMessages, query } from "./engine/index.ts";
+import type { Query } from "./engine/index.ts";
 
 import { App } from "./tui/App.tsx";
 import { ChatStore } from "./tui/chat-store.ts";

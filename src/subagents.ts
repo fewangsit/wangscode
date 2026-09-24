@@ -1,4 +1,4 @@
-import type { AgentDefinition } from "@anthropic-ai/claude-agent-sdk";
+import type { AgentDefinition } from "./engine/index.ts";
 
 // Subagent definitions for every Wangs Foundation project this agent talks
 // to — bundled here as plain objects (Options.agents: Record<string,

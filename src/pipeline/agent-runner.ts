@@ -1,9 +1,9 @@
-// Thin wrapper around @anthropic-ai/claude-agent-sdk's query(). This is the
+// Thin wrapper around OpenCode engine's query(). This is the
 // ONLY file that calls the model. Every other file in this directory is
 // plain host code (state, gates, routing) — see docs/ + the architecture
 // doc this implements for why that split matters: control flow must live in
 // code the model cannot talk its way around.
-import { query, SYSTEM_PROMPT_DYNAMIC_BOUNDARY, type Options, type SDKMessage } from "@anthropic-ai/claude-agent-sdk";
+import { query, SYSTEM_PROMPT_DYNAMIC_BOUNDARY, type Options, type SDKMessage } from "../engine/index.ts";
 
 import { DOCS_KNOWLEDGE_MCP_SERVERS } from "../docs-knowledge.ts";
 import { resolveWangsUiMcpServer } from "../mcp-sync.ts";

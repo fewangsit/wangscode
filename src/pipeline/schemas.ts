@@ -1,7 +1,7 @@
 // Zod schemas validate `structured_output` at runtime; the JSON Schema
 // objects next to each one are what actually gets sent as `outputFormat`
-// (Options.outputFormat only accepts raw JSON Schema, not a Zod schema —
-// see @anthropic-ai/claude-agent-sdk's `JsonSchemaOutputFormat` type).
+// (Options.outputFormat accepts raw JSON Schema, not a Zod schema —
+// see OpenCode engine's `outputFormat` type).
 // Keeping both hand-written side by side (instead of pulling in a
 // zod-to-json-schema dependency) means a drift between them is caught
 // immediately by the zod .parse() call failing against real output.

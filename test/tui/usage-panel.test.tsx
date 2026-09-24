@@ -2,7 +2,7 @@ import { describe, expect, mock, test } from "bun:test";
 import React from "react";
 import { createTestRenderer } from "@opentui/core/testing";
 import { createRoot } from "@opentui/react";
-import type { SDKControlGetUsageResponse } from "@anthropic-ai/claude-agent-sdk";
+import type { SDKControlGetUsageResponse } from "../../src/engine/index.ts";
 
 import { UsagePanel } from "../../src/tui/UsagePanel.tsx";
 
@@ -15,12 +15,15 @@ const MOCK_USAGE_DATA: SDKControlGetUsageResponse = {
     total_lines_removed: 8,
     model_usage: {
       "claude-sonnet-5": {
+        maxOutputTokens: 8192,
+        contextWindow: 200000,
         inputTokens: 1250,
         outputTokens: 480,
+        thinkingTokens: 50,
         cacheReadInputTokens: 5000,
         cacheCreationInputTokens: 200,
-        contextWindow: 200000,
         costUSD: 0.0425,
+        webSearchRequests: 0,
       },
     },
   },

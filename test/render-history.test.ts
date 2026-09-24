@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import type { SessionMessage } from "@anthropic-ai/claude-agent-sdk";
+import type { SessionMessage } from "../src/engine/index.ts";
 
 import { convertSessionMessagesToBlocks } from "../src/render.ts";
 import { ChatStore } from "../src/tui/chat-store.ts";

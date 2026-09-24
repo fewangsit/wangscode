@@ -1,5 +1,5 @@
-import { listSessions, renameSession } from "@anthropic-ai/claude-agent-sdk";
-import type { Query, SessionStore } from "@anthropic-ai/claude-agent-sdk";
+import { listSessions, renameSession } from "./engine/index.ts";
+import type { Query, SessionStore } from "./engine/index.ts";
 
 import { syncSkillProvidersWithFetch } from "./skills-sync.ts";
 import type { ChatStore } from "./tui/chat-store.ts";

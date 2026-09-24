@@ -2,7 +2,7 @@
 // own package; merged directly into wangscode so there is one source, one
 // process, no subprocess boundary. This file has no behavior of its own,
 // only the shapes shared across the other pipeline modules.
-import type { SDKMessage } from "@anthropic-ai/claude-agent-sdk";
+import type { SDKMessage } from "../engine/index.ts";
 
 export const PHASES = ["requirements", "data-layer", "test-contract", "ui-slice", "connect", "e2e-run", "lint", "review"] as const;
 

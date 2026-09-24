@@ -8,7 +8,7 @@ import { CollapsibleJson, JsonNodeView, renderBlock } from "../../src/tui/BlockR
 import type { ChatBlock } from "../../src/tui/chat-store.ts";
 
 describe("BlockRenderers - CollapsibleJson", () => {
-  const syntaxStyle = new SyntaxStyle();
+  const syntaxStyle = SyntaxStyle.create();
 
   test("renders collapsed JSON preview by default", async () => {
     const testRenderer = await createTestRenderer({ width: 80, height: 10 });
@@ -70,10 +70,12 @@ describe("BlockRenderers - CollapsibleJson", () => {
     const root = createRoot(testRenderer.renderer);
 
     const toolBlock: ChatBlock = {
-      id: "tool-1",
+      id: 1,
       kind: "tool",
+      toolUseId: "tool-1",
       name: "batch",
       status: "done",
+      isSkill: false,
       input: {
         container: { kind: "project", id: "9bdd456d" },
         batch: [{ verb: "create" }],

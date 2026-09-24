@@ -1,4 +1,4 @@
-import type { CanUseTool, PermissionResult, PermissionUpdate } from "@anthropic-ai/claude-agent-sdk";
+import type { CanUseTool, PermissionResult, PermissionUpdate } from "./engine/index.ts";
 
 import { formatToolLabel, parseToolName } from "./tui/format.ts";
 import { Store } from "./tui/store.ts";

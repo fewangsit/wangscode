@@ -1,5 +1,5 @@
 import type { Pool } from "pg";
-import type { SessionKey, SessionStore, SessionStoreEntry } from "@anthropic-ai/claude-agent-sdk";
+import type { SessionKey, SessionStore, SessionStoreEntry } from "./engine/index.ts";
 
 export interface PostgresSessionStoreOptions {
   /** Pre-configured pg Pool. Caller controls connection params, pooling, TLS — not this class. */

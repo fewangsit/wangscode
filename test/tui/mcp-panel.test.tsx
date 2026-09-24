@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import React from "react";
 import { createTestRenderer } from "@opentui/core/testing";
 import { createRoot } from "@opentui/react";
-import type { McpServerStatus } from "@anthropic-ai/claude-agent-sdk";
+import type { McpServerStatus } from "../../src/engine/index.ts";
 
 import { McpPanel } from "../../src/tui/McpPanel.tsx";
 
@@ -57,7 +57,6 @@ describe("McpPanel", () => {
           command: "npx",
           args: ["-y", "@wangs-ui/mcp@latest"],
         },
-        // @ts-expect-error test runtime capabilities field
         capabilities: ["tools", "resources"],
         tools: Array.from({ length: 12 }, (_, i) => ({ name: `tool_${i}` })),
       },
@@ -153,7 +152,6 @@ describe("McpPanel", () => {
             name: "query_graph",
             description: "Keyword search cepat khusus domain [uiux]",
             annotations: { readOnly: true },
-            // @ts-expect-error test schema augmentation
             inputSchema: {
               type: "object",
               properties: {

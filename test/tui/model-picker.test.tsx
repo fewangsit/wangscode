@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import React from "react";
 import { createTestRenderer } from "@opentui/core/testing";
 import { createRoot } from "@opentui/react";
-import type { ModelInfo } from "@anthropic-ai/claude-agent-sdk";
+import type { ModelInfo } from "../../src/engine/index.ts";
 
 import { ModelPicker } from "../../src/tui/ModelPicker.tsx";
 

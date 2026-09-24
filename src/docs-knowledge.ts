@@ -1,4 +1,4 @@
-import type { McpServerConfig } from "@anthropic-ai/claude-agent-sdk";
+import type { McpServerConfig } from "./engine/index.ts";
 
 // Filesystem-backed MCP server over TAG Samurai's own PRD/UI-Design/TestCases docs — a live
 // git-cloned copy on the server, read directly (list_directory/search_files/search_content/

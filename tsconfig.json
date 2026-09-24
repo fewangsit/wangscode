@@ -3,7 +3,9 @@
     "target": "ES2023",
     "module": "ESNext",
     "moduleResolution": "Bundler",
-    "lib": ["ES2023"],
+    "lib": [
+      "ES2023"
+    ],
     "skipLibCheck": true,
     "strict": true,
     "noImplicitAny": true,
@@ -20,8 +22,21 @@
     "noEmit": true,
     "jsx": "react-jsx",
     "jsxImportSource": "@opentui/react",
-    "types": ["node", "react", "bun"]
+    "types": [
+      "node",
+      "react",
+      "bun"
+    ]
   },
-  "include": ["src/**/*.ts", "src/**/*.tsx"],
-  "exclude": ["node_modules", "dist"]
+  "include": [
+    "src/**/*.ts",
+    "src/**/*.tsx",
+    "test/**/*.ts",
+    "test/**/*.tsx",
+    "scripts/**/*.ts"
+  ],
+  "exclude": [
+    "node_modules",
+    "dist"
+  ]
 }

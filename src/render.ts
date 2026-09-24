@@ -1,4 +1,4 @@
-import type { SDKMessage, SessionMessage } from "@anthropic-ai/claude-agent-sdk";
+import type { SDKMessage, SessionMessage } from "./engine/index.ts";
 
 import type { ChatBlock, ChatStore, ToolCallBlock } from "./tui/chat-store.ts";
 import { stripModelOnlyNote } from "./tui/format.ts";

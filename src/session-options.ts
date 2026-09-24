@@ -1,6 +1,6 @@
 import path from "node:path";
 
-import type { CanUseTool, Options, SessionStore } from "@anthropic-ai/claude-agent-sdk";
+import type { CanUseTool, Options, SessionStore } from "./engine/index.ts";
 
 import { PRIMARY_RULES } from "./primary-rules.ts";
 import { WANGS_PERSONA_APPEND } from "./persona.ts";
