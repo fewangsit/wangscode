@@ -105,6 +105,8 @@ async function runOnePhase(
 
   if (!isModelPhase(phase)) return { ok: true };
 
+  ctx.args.onPhaseStart?.(phase);
+
   const contract = state.artifacts["test-contract"];
   let prompt = buildPhasePrompt(phase, ctx.args.featureSlug, bundle, ctx.scope, contract);
   if (ctx.priorFailure) {
@@ -127,6 +129,7 @@ async function runOnePhase(
     allowedTools: PHASE_TOOL_ALLOWLIST[phase],
     outputFormat,
     cacheablePrefix: buildCacheableContext(bundle),
+    onMessage: ctx.args.onMessage,
   });
 
   if (!turn.ok) {

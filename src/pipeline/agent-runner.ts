@@ -3,7 +3,7 @@
 // plain host code (state, gates, routing) — see docs/ + the architecture
 // doc this implements for why that split matters: control flow must live in
 // code the model cannot talk its way around.
-import { query, SYSTEM_PROMPT_DYNAMIC_BOUNDARY, type Options } from "@anthropic-ai/claude-agent-sdk";
+import { query, SYSTEM_PROMPT_DYNAMIC_BOUNDARY, type Options, type SDKMessage } from "@anthropic-ai/claude-agent-sdk";
 
 import { DOCS_KNOWLEDGE_MCP_SERVERS } from "../docs-knowledge.ts";
 import { resolveWangsUiMcpServer } from "../mcp-sync.ts";
@@ -26,6 +26,14 @@ export interface RunAgentTurnParams {
    * with no such shared content (review has none today).
    */
   cacheablePrefix?: string;
+  /**
+   * Forwards every raw SDK message from this turn's `query()` call — the caller (see
+   * run-build-feature.ts / requirements-phase.ts) is expected to wire this to
+   * `createPipelineProgressRenderer` (render.ts) so a phase's thinking/tool-calls/text stream into
+   * the chat UI live instead of the chat sitting silent until the whole phase finishes. Optional:
+   * omitting it changes nothing about the turn itself.
+   */
+  onMessage?: (message: SDKMessage) => void;
 }
 
 export interface AgentTurnResult {
@@ -48,6 +56,14 @@ export async function runAgentTurn(params: RunAgentTurnParams): Promise<AgentTur
     cwd: params.repoRoot,
     model: params.model ?? "claude-sonnet-5",
     allowedTools: params.allowedTools,
+    // Without this the turn emits only completed `assistant` messages — never the
+    // `stream_event` content-block deltas the chat renderer streams from (see render.ts's
+    // createPipelineProgressRenderer). The interactive session sets this too
+    // (session-options.ts), which is why chat streams live but a pipeline phase used to sit
+    // completely silent (thinking/tool-calls included) until the whole phase finished — the
+    // exact "stuck, no stream, no progress" symptom. `onMessage` below is fed every raw message,
+    // so it needs these deltas to render anything at all.
+    includePartialMessages: true,
     // Only reachable when the caller's allowedTools includes "Agent" (today,
     // only the ui-slice phase) — registering it unconditionally here is
     // harmless for every other phase and keeps this one place in sync with
@@ -80,6 +96,13 @@ export async function runAgentTurn(params: RunAgentTurnParams): Promise<AgentTur
     // scoped per phase by the caller (see run.ts's PHASE_TOOL_ALLOWLIST).
     permissionMode: "bypassPermissions",
     allowDangerouslySkipPermissions: true,
+    // Keep adaptive thinking (the model default) but ask for SUMMARY text instead of the
+    // headless default ('omitted'). Without this, thinking_delta frames carry only an
+    // `estimated_tokens` counter and no `.thinking` string — confirmed live against this SDK —
+    // so the chat renderer's thinking block stays at 0 characters (just a 💭 with nothing in it)
+    // for the entire phase. With 'summarized' the actual reasoning streams into the chat through
+    // the same `onMessage` deltas the interactive session uses (see includePartialMessages above).
+    thinking: { type: "adaptive", display: "summarized" },
     ...(params.outputFormat ? { outputFormat: params.outputFormat } : {}),
   };
 
@@ -90,6 +113,7 @@ export async function runAgentTurn(params: RunAgentTurnParams): Promise<AgentTur
   let errors: string[] | undefined;
 
   for await (const message of query({ prompt: params.prompt, options })) {
+    params.onMessage?.(message);
     if (message.type === "result") {
       totalCostUsd = message.total_cost_usd;
       if (message.subtype === "success") {

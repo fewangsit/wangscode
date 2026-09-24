@@ -52,6 +52,7 @@ async function gapCheck(ctx: PipelineContext, bundle: RequirementBundle): Promis
     allowedTools: DOCS_KNOWLEDGE_TOOLS,
     outputFormat: { type: "json_schema", schema: gapReportJsonSchema },
     cacheablePrefix: buildCacheableContext(bundle),
+    onMessage: ctx.args.onMessage,
   });
   if (!result.ok) {
     throw new Error(`gap-check turn failed: ${result.errors?.join("; ") ?? result.resultText}`);
@@ -72,6 +73,7 @@ export type RequirementsOutcome =
  * decision, never a command exit code, in both interactive and auto mode.
  */
 export async function runRequirementsPhase(ctx: PipelineContext, state: PipelineState): Promise<RequirementsOutcome> {
+  ctx.args.onPhaseStart?.("requirements");
   const bundle = extract(state, state.clarifications);
   const gapReport = await gapCheck(ctx, bundle);
 

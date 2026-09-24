@@ -1,5 +1,7 @@
 import { runFeatureBuildPipeline } from "./pipeline/index.ts";
 import type { FeatureBuildResult } from "./pipeline/index.ts";
+import { createPipelineProgressRenderer } from "./render.ts";
+import type { ChatStore } from "./tui/chat-store.ts";
 import { PromptCancelled } from "./tui/input-router.ts";
 import type { PendingFeatureBuild } from "./types.ts";
 
@@ -54,6 +56,7 @@ export class FeatureBuildController {
   constructor(
     private readonly askLine: (prompt: string) => Promise<string>,
     private readonly project: string,
+    private readonly chatStore: ChatStore,
   ) {}
 
   isBusy(): boolean {
@@ -70,10 +73,30 @@ export class FeatureBuildController {
    * with it. Callers (the /create-feature prompt AND the model-invoked
    * create_feature tool) can treat the return value as the whole story.
    */
+  /**
+   * Fresh per pipeline call (not a single instance field) — `createPipelineProgressRenderer`
+   * tracks in-flight content-block indices for exactly one `query()` stream at a time, and a
+   * multi-phase pipeline call makes several sequential `query()` calls (agent-runner.ts, one per
+   * phase). Reusing one across phases would be harmless in practice (each phase's stream closes
+   * its own blocks before the next starts) but a fresh one per call is simpler to reason about.
+   */
+  private progressHooks(): { onPhaseStart: (phase: string) => void; onMessage: ReturnType<typeof createPipelineProgressRenderer> } {
+    return {
+      onPhaseStart: (phase: string) => this.chatStore.pushHost(`▸ Fase: ${phase}`),
+      onMessage: createPipelineProgressRenderer(this.chatStore),
+    };
+  }
+
   async start(args: FeatureBuildStartArgs): Promise<ControllerResult> {
     this.busy = true;
     try {
-      const result = await runFeatureBuildPipeline({ ...args, project: this.project, mode: args.mode ?? "interactive", resume: false });
+      const result = await runFeatureBuildPipeline({
+        ...args,
+        project: this.project,
+        mode: args.mode ?? "interactive",
+        resume: false,
+        ...this.progressHooks(),
+      });
       this.applyResult(args.featureSlug, result);
       return result;
     } catch (err) {
@@ -93,6 +116,7 @@ export class FeatureBuildController {
         mode: "interactive",
         resume: true,
         answer,
+        ...this.progressHooks(),
       });
       this.applyResult(this.pending.featureSlug, result);
       return result;

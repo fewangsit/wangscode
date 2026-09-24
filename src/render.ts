@@ -24,67 +24,98 @@ type TrackedBlock = { kind: "thinking" } | { kind: "tool_use"; toolUseId: string
  *   `message.content`, so which `finish*()` to call depends on that block's own `type`, not a
  *   blanket "assistant message means text finished" assumption.
  */
+/**
+ * The part of message rendering that's identical whether the stream comes from the main
+ * interactive session or a throwaway pipeline-phase `query()` call (see
+ * `createPipelineProgressRenderer` below) — content-block streaming (thinking/tool_use/text) and
+ * tool-result completion. Session-status effects (`system/init`, usage accounting) are NOT here:
+ * a pipeline phase's `system/init` is for an unrelated ephemeral session and must never overwrite
+ * the status bar's view of the real interactive session. Returns true if the message was handled.
+ */
+function applyStreamedContent(chatStore: ChatStore, tracked: Map<number, TrackedBlock>, message: SDKMessage): boolean {
+  if (message.type === "stream_event") {
+    const event = message.event;
+
+    if (event.type === "content_block_start") {
+      const block = event.content_block;
+      if (block.type === "thinking" || block.type === "redacted_thinking") {
+        tracked.set(event.index, { kind: "thinking" });
+        chatStore.appendThinkingDelta("");
+      } else if (block.type === "tool_use") {
+        tracked.set(event.index, { kind: "tool_use", toolUseId: block.id });
+        chatStore.startToolCall(block.id, block.name);
+      }
+      return true;
+    }
+
+    if (event.type === "content_block_delta") {
+      const entry = tracked.get(event.index);
+      if (entry?.kind === "thinking" && event.delta.type === "thinking_delta") {
+        chatStore.appendThinkingDelta(event.delta.thinking);
+      } else if (entry?.kind === "tool_use" && event.delta.type === "input_json_delta") {
+        chatStore.appendToolInputDelta(entry.toolUseId, event.delta.partial_json);
+      } else if (entry === undefined && event.delta.type === "text_delta") {
+        chatStore.appendAssistantDelta(event.delta.text);
+      }
+      return true;
+    }
+
+    if (event.type === "content_block_stop") {
+      const entry = tracked.get(event.index);
+      tracked.delete(event.index);
+      if (entry?.kind === "tool_use") {
+        chatStore.finishToolInput(entry.toolUseId);
+      }
+      return true;
+    }
+
+    return true;
+  }
+
+  if (message.type === "assistant") {
+    const block = message.message.content[0];
+    if (!block) return true;
+    if (block.type === "text") chatStore.finishAssistant();
+    else if (block.type === "thinking" || block.type === "redacted_thinking") chatStore.finishThinking();
+    // tool_use completion is already handled via the stream_event content_block_stop path above.
+    return true;
+  }
+
+  if (message.type === "user") {
+    const content = message.message.content;
+    if (!Array.isArray(content)) return true;
+    for (const block of content) {
+      if (block.type !== "tool_result") continue;
+      chatStore.completeToolCall(block.tool_use_id, summarizeToolResultContent(block.content), block.is_error ?? false);
+    }
+    return true;
+  }
+
+  return false;
+}
+
+/**
+ * Pipeline-phase turns (agent-runner.ts's `runAgentTurn`, one throwaway `query()` per phase — see
+ * that file's own comment on why) used to render NOTHING to the chat while a phase ran: the
+ * pipeline's own for-await loop only looked at the final `result` message. A single phase can run
+ * for minutes of real tool-calling; with zero streaming that is indistinguishable from "stuck, no
+ * progress" — confirmed as the actual root cause of a real user report, not a hang bug. This gives
+ * pipeline turns the same live thinking/tool-call/text rendering as interactive chat, minus the
+ * session-status effects (see `applyStreamedContent`'s comment — a phase's own ephemeral
+ * `system/init` must never overwrite the status bar's view of the real interactive session).
+ */
+export function createPipelineProgressRenderer(chatStore: ChatStore): (message: SDKMessage) => void {
+  const tracked = new Map<number, TrackedBlock>();
+  return function renderMessage(message: SDKMessage): void {
+    applyStreamedContent(chatStore, tracked, message);
+  };
+}
+
 export function createMessageRenderer(chatStore: ChatStore, sessionStatus: SessionStatusStore): (message: SDKMessage) => void {
   const tracked = new Map<number, TrackedBlock>();
 
   return function renderMessage(message: SDKMessage): void {
-    if (message.type === "stream_event") {
-      const event = message.event;
-
-      if (event.type === "content_block_start") {
-        const block = event.content_block;
-        if (block.type === "thinking" || block.type === "redacted_thinking") {
-          tracked.set(event.index, { kind: "thinking" });
-          chatStore.appendThinkingDelta("");
-        } else if (block.type === "tool_use") {
-          tracked.set(event.index, { kind: "tool_use", toolUseId: block.id });
-          chatStore.startToolCall(block.id, block.name);
-        }
-        return;
-      }
-
-      if (event.type === "content_block_delta") {
-        const entry = tracked.get(event.index);
-        if (entry?.kind === "thinking" && event.delta.type === "thinking_delta") {
-          chatStore.appendThinkingDelta(event.delta.thinking);
-        } else if (entry?.kind === "tool_use" && event.delta.type === "input_json_delta") {
-          chatStore.appendToolInputDelta(entry.toolUseId, event.delta.partial_json);
-        } else if (entry === undefined && event.delta.type === "text_delta") {
-          chatStore.appendAssistantDelta(event.delta.text);
-        }
-        return;
-      }
-
-      if (event.type === "content_block_stop") {
-        const entry = tracked.get(event.index);
-        tracked.delete(event.index);
-        if (entry?.kind === "tool_use") {
-          chatStore.finishToolInput(entry.toolUseId);
-        }
-        return;
-      }
-
-      return;
-    }
-
-    if (message.type === "assistant") {
-      const block = message.message.content[0];
-      if (!block) return;
-      if (block.type === "text") chatStore.finishAssistant();
-      else if (block.type === "thinking" || block.type === "redacted_thinking") chatStore.finishThinking();
-      // tool_use completion is already handled via the stream_event content_block_stop path above.
-      return;
-    }
-
-    if (message.type === "user") {
-      const content = message.message.content;
-      if (!Array.isArray(content)) return;
-      for (const block of content) {
-        if (block.type !== "tool_result") continue;
-        chatStore.completeToolCall(block.tool_use_id, summarizeToolResultContent(block.content), block.is_error ?? false);
-      }
-      return;
-    }
+    if (applyStreamedContent(chatStore, tracked, message)) return;
 
     if (message.type === "system" && message.subtype === "init") {
       sessionStatus.applyInit({
