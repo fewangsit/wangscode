@@ -1,6 +1,6 @@
 {
   "name": "wangscode",
-  "version": "1.8.43",
+  "version": "1.8.48",
   "description": "Standalone interactive terminal chat CLI (requires Bun) for Wangs Foundation projects, built on OpenCode. Behaves like a general-purpose coding agent for everyday work; routes end-to-end feature builds through its own deterministic, gated pipeline (real command gates, never model self-judgment) instead of freeform agent judgment.",
   "license": "MIT",
   "bin": {

@@ -5,6 +5,7 @@ import {
   formatSubagentTitle,
   formatToolCall,
   formatToolLabel,
+  inferSubagentType,
   isJsonString,
   parseToolName,
   shortenPath,
@@ -247,6 +248,27 @@ describe("format utilities", () => {
       const summary = summarizeJson(large, 40);
       expect(summary).toContain("+");
       expect(summary.length).toBeLessThanOrEqual(50);
+    });
+  });
+
+  describe("inferSubagentType", () => {
+    test("infers subagent type from subagent_type, subagent, agent, category, or type", () => {
+      expect(inferSubagentType({ subagent_type: "ui-design-reader" })).toBe("ui-design-reader");
+      expect(inferSubagentType({ subagent: "functional-reader" })).toBe("functional-reader");
+      expect(inferSubagentType({ agent: "test-case-reader" })).toBe("test-case-reader");
+      expect(inferSubagentType({ category: "wangs-ui-querier" })).toBe("wangs-ui-querier");
+      expect(inferSubagentType({ type: "custom-agent" })).toBe("custom-agent");
+    });
+
+    test("infers test-case-reader from description or task containing test case", () => {
+      expect(inferSubagentType({ description: "Baca sample-tag test case" })).toBe("test-case-reader");
+      expect(inferSubagentType({ task: "Extract all test cases from document" })).toBe("test-case-reader");
+    });
+
+    test("falls back to default type when no match", () => {
+      expect(inferSubagentType(null)).toBe("subagent");
+      expect(inferSubagentType({})).toBe("subagent");
+      expect(inferSubagentType({}, "custom")).toBe("custom");
     });
   });
 

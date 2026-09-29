@@ -32,6 +32,8 @@ import { permissionOptionsFor, PermissionPrompt } from "./PermissionPrompt.tsx";
 import { SessionPicker, type SessionInfo } from "./SessionPicker.tsx";
 import { getServerActions, McpPanel, type McpPanelView, type McpServerAction, MCP_SERVER_ACTIONS } from "./McpPanel.tsx";
 import { ArtifactsPanel, type ArtifactItem } from "./ArtifactsPanel.tsx";
+import { SubagentsPanel, type SubagentsPanelView, type SubagentExecutionItem } from "./SubagentsPanel.tsx";
+import { formatSubagentTitle, inferSubagentType } from "./format.ts";
 import { clearMcpToolCache, fetchServerToolDefinitions, type McpTool } from "../mcp-tools.ts";
 
 // Plain Enter submits (like the old single-line <input>), Option/Alt+Enter inserts a newline
@@ -220,6 +222,11 @@ export function App({
   const [artifactsPanelOpen, setArtifactsPanelOpen] = useState(false);
   const [artifactsSelectedIndex, setArtifactsSelectedIndex] = useState(0);
 
+  // The interactive /subagents overlay — same pattern as /artifacts, /mcp, etc.
+  const [subagentsPanelOpen, setSubagentsPanelOpen] = useState(false);
+  const [subagentsPanelView, setSubagentsPanelView] = useState<SubagentsPanelView>({ kind: "history", selectedIdx: 0 });
+  const subagentDetailScrollRef = useRef<ScrollBoxRenderable | null>(null);
+
   // The canUseTool permission overlay — reset to the first option each time a *different* request
   // comes in (identity check via toolName+label, since `permissionRequest` is a fresh object per
   // call) so a previous answer's selection doesn't carry over to the next, unrelated prompt.
@@ -260,7 +267,15 @@ export function App({
   }, [resumeEvent]);
   const permissionOptions = permissionOptionsFor(permissionRequest?.suggestions !== undefined);
 
-  const isOverlayActive = Boolean(permissionRequest || usagePanelOpen || modelPickerOpen || sessionPickerOpen || mcpPanelOpen || artifactsPanelOpen);
+  const isOverlayActive = Boolean(
+    permissionRequest ||
+      usagePanelOpen ||
+      modelPickerOpen ||
+      sessionPickerOpen ||
+      mcpPanelOpen ||
+      artifactsPanelOpen ||
+      subagentsPanelOpen,
+  );
 
   // When no overlay is active, the chat input is the only real input in the app.
   // Steal focus back to the input if something else (like scrollback) is clicked.
@@ -642,6 +657,116 @@ export function App({
     return list;
   }, [blocks]);
 
+  const sessionSubagents = useMemo<SubagentExecutionItem[]>(() => {
+    const list: SubagentExecutionItem[] = [];
+    const indexByToolUseId = new Map<string, number>();
+
+    for (const b of blocks) {
+      if (b.kind !== "tool") continue;
+      const inputObj = typeof b.input === "object" && b.input !== null ? (b.input as Record<string, unknown>) : null;
+      const isAgent =
+        b.isSubagent ||
+        b.name.toLowerCase() === "agent" ||
+        b.name.toLowerCase() === "subagent" ||
+        b.name.toLowerCase() === "task" ||
+        Boolean(inputObj && ("subagent_type" in inputObj || "subagent" in inputObj || "agent" in inputObj));
+      if (!isAgent) continue;
+
+      const rawType = b.subagentType || inferSubagentType(inputObj);
+      const title = formatSubagentTitle(rawType);
+      const desc =
+        b.subagentDescription ||
+        (typeof inputObj?.description === "string" ? inputObj.description : undefined) ||
+        (typeof inputObj?.task === "string" ? inputObj.task : undefined) ||
+        (typeof inputObj?.title === "string" ? inputObj.title : undefined) ||
+        b.subagentPrompt ||
+        (typeof inputObj?.prompt === "string" ? inputObj.prompt : undefined);
+      const prompt =
+        b.subagentPrompt ||
+        (typeof inputObj?.prompt === "string" ? inputObj.prompt : undefined) ||
+        (typeof inputObj?.task === "string" ? inputObj.task : undefined) ||
+        (typeof inputObj?.instructions === "string" ? inputObj.instructions : undefined) ||
+        (typeof inputObj?.query === "string" ? inputObj.query : undefined) ||
+        desc;
+      const durationSec =
+        b.completedAt && b.startedAt ? ((b.completedAt - b.startedAt) / 1000).toFixed(1) : undefined;
+
+      const item: SubagentExecutionItem = {
+        id: b.id,
+        toolUseId: b.toolUseId,
+        title,
+        subagentType: rawType,
+        description: desc,
+        prompt,
+        status: b.status,
+        startedAt: b.startedAt,
+        completedAt: b.completedAt,
+        durationSec,
+        events: b.subagentEvents ?? [],
+        resultText: b.resultText,
+        childSessionId: b.childSessionId,
+      };
+
+      if (indexByToolUseId.has(b.toolUseId)) {
+        const existingIdx = indexByToolUseId.get(b.toolUseId)!;
+        const existing = list[existingIdx]!;
+        list[existingIdx] = {
+          ...existing,
+          ...item,
+          title: item.title !== "Subagent" ? item.title : existing.title,
+          subagentType: item.subagentType !== "subagent" ? item.subagentType : existing.subagentType,
+          description: item.description || existing.description,
+          prompt: item.prompt || existing.prompt,
+          status: item.status !== "running" ? item.status : existing.status,
+          events: item.events.length >= existing.events.length ? item.events : existing.events,
+          resultText: item.resultText || existing.resultText,
+          childSessionId: item.childSessionId || existing.childSessionId,
+        };
+      } else {
+        indexByToolUseId.set(b.toolUseId, list.length);
+        list.push(item);
+      }
+    }
+    return list;
+  }, [blocks]);
+
+  const closeSubagentsPanel = (): void => {
+    setSubagentsPanelOpen(false);
+    setInputText("");
+    setInputScrollState({ lines: 1, scrollY: 0 });
+    queueMicrotask(() => {
+      inputRef.current?.setText("");
+      inputRef.current?.focus();
+    });
+  };
+
+  const openSubagentsPanel = (): void => {
+    inputRef.current?.blur();
+    setSubagentsPanelOpen(true);
+    const runningIdx = sessionSubagents.findIndex((s) => s.status === "running");
+    const targetIdx = runningIdx !== -1 ? runningIdx : Math.max(0, sessionSubagents.length - 1);
+    setSubagentsPanelView({ kind: "history", selectedIdx: targetIdx });
+  };
+
+  const handleOpenSubagentDetail = (toolUseId: string): void => {
+    const idx = sessionSubagents.findIndex((s) => s.toolUseId === toolUseId);
+    if (idx !== -1) {
+      setSubagentsPanelView({ kind: "detail", selectedIdx: idx });
+      setSubagentsPanelOpen(true);
+    } else {
+      setSubagentsPanelView({ kind: "history", selectedIdx: 0 });
+      setSubagentsPanelOpen(true);
+    }
+  };
+
+  const handleCopySubagentReport = (text: string): void => {
+    if (renderer.copyToClipboardOSC52(text)) {
+      setCopiedVisible(true);
+      if (copiedTimerRef.current) clearTimeout(copiedTimerRef.current);
+      copiedTimerRef.current = setTimeout(() => setCopiedVisible(false), 1500);
+    }
+  };
+
   const closeMcpPanel = (): void => {
     mcpActionSeqRef.current++;
     setMcpPanelOpen(false);
@@ -847,7 +972,7 @@ export function App({
       return;
     }
 
-    if (!sessionPickerOpen && !modelPickerOpen && !usagePanelOpen && !mcpPanelOpen && !artifactsPanelOpen && !permissionRequest) {
+    if (!sessionPickerOpen && !modelPickerOpen && !usagePanelOpen && !mcpPanelOpen && !artifactsPanelOpen && !subagentsPanelOpen && !permissionRequest) {
       updateInputDimensions();
     }
 
@@ -1042,6 +1167,56 @@ export function App({
       return;
     }
 
+    if (subagentsPanelOpen) {
+      if (subagentsPanelView.kind === "history") {
+        if (sessionSubagents.length > 0 && key.name === "up") {
+          setSubagentsPanelView((v) => ({
+            kind: "history",
+            selectedIdx: (v.selectedIdx - 1 + sessionSubagents.length) % sessionSubagents.length,
+          }));
+        } else if (sessionSubagents.length > 0 && key.name === "down") {
+          setSubagentsPanelView((v) => ({
+            kind: "history",
+            selectedIdx: (v.selectedIdx + 1) % sessionSubagents.length,
+          }));
+        } else if (key.name === "escape") {
+          closeSubagentsPanel();
+        } else if ((key.name === "return" || key.name === "space") && sessionSubagents.length > 0) {
+          setSubagentsPanelView((v) => ({
+            kind: "detail",
+            selectedIdx: v.selectedIdx,
+          }));
+        }
+      } else if (subagentsPanelView.kind === "detail") {
+        const item = sessionSubagents[subagentsPanelView.selectedIdx];
+        if (key.name === "up") {
+          if (subagentDetailScrollRef.current) {
+            subagentDetailScrollRef.current.scrollTop = Math.max(0, subagentDetailScrollRef.current.scrollTop - 2);
+          }
+        } else if (key.name === "down") {
+          if (subagentDetailScrollRef.current) {
+            subagentDetailScrollRef.current.scrollTop += 2;
+          }
+        } else if (key.name === "pageup") {
+          if (subagentDetailScrollRef.current) {
+            subagentDetailScrollRef.current.scrollTop = Math.max(0, subagentDetailScrollRef.current.scrollTop - 10);
+          }
+        } else if (key.name === "pagedown") {
+          if (subagentDetailScrollRef.current) {
+            subagentDetailScrollRef.current.scrollTop += 10;
+          }
+        } else if (key.name === "escape" || key.name === "left") {
+          setSubagentsPanelView((v) => ({
+            kind: "history",
+            selectedIdx: v.selectedIdx,
+          }));
+        } else if (key.name === "c" && item?.resultText) {
+          handleCopySubagentReport(item.resultText);
+        }
+      }
+      return;
+    }
+
     if (usagePanelOpen) {
       if (key.name === "escape") closeUsagePanel();
       return;
@@ -1090,7 +1265,10 @@ export function App({
 
     // Nothing else claimed Escape (no picker, no panel, no suggestion box) — it stops/interrupts
     // whatever the session is currently doing, matching Claude Code's own Escape behavior.
-    if (key.name === "escape") onInterrupt();
+    if (key.name === "escape") {
+      chatStore.finalizeTurn(true);
+      onInterrupt();
+    }
   });
 
   // Deliberately uncontrolled (no `value=` feeding React state back into the renderable) —
@@ -1109,7 +1287,7 @@ export function App({
     // alongside useKeyboard's "return" handler for confirmModelPick()/closeUsagePanel(), the same
     // double-firing hazard the suggestion box's comment above describes for the same underlying
     // reason (both subscribe to the same keypress). The overlay owns Enter entirely while it's open.
-    if (sessionPickerOpen || modelPickerOpen || usagePanelOpen || mcpPanelOpen || artifactsPanelOpen) return;
+    if (sessionPickerOpen || modelPickerOpen || usagePanelOpen || mcpPanelOpen || artifactsPanelOpen || subagentsPanelOpen) return;
     if (visibleSuggestions.length > 0) {
       acceptSuggestion(visibleSuggestions[selectedIndex]!);
       return;
@@ -1136,6 +1314,11 @@ export function App({
     if (!activePrompt && text === "/artifacts") {
       setInputText("");
       openArtifactsPanel();
+      return;
+    }
+    if (!activePrompt && (text === "/subagents" || text === "/subagent")) {
+      setInputText("");
+      openSubagentsPanel();
       return;
     }
     if (!activePrompt && (text === "/resume" || text.startsWith("/resume "))) {
@@ -1223,7 +1406,7 @@ export function App({
             onCommandClick={insertCommand}
           />
         ) : null}
-        {blocks.filter((b) => b.kind !== "welcome").map((block) => renderBlock(block, syntaxStyle))}
+        {blocks.filter((b) => b.kind !== "welcome").map((block) => renderBlock(block, syntaxStyle, handleOpenSubagentDetail))}
         {turn ? <TurnStatusIndicator turn={turn} blocks={blocks} effort={effort} /> : null}
       </scrollbox>
 
@@ -1343,6 +1526,18 @@ export function App({
             onOpen={openUrl}
             onClose={closeArtifactsPanel}
             onSelect={(idx) => setArtifactsSelectedIndex(idx)}
+          />
+        </box>
+      ) : subagentsPanelOpen ? (
+        <box style={{ flexShrink: 0 }}>
+          <SubagentsPanel
+            subagents={sessionSubagents}
+            view={subagentsPanelView}
+            scrollRef={subagentDetailScrollRef}
+            onClose={closeSubagentsPanel}
+            onSelect={(idx) => setSubagentsPanelView({ kind: "history", selectedIdx: idx })}
+            onOpenDetail={(idx) => setSubagentsPanelView({ kind: "detail", selectedIdx: idx })}
+            onBackToList={() => setSubagentsPanelView((v) => ({ kind: "history", selectedIdx: v.selectedIdx }))}
           />
         </box>
       ) : (

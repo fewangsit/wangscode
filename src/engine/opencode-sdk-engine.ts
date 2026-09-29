@@ -147,11 +147,14 @@ export async function getOpencodeClient(options?: { directory?: string }): Promi
   clientPromise = (async () => {
     const url = process.env.OPENCODE_URL || "http://127.0.0.1:4096";
 
-    // 1. Try connecting to already running server
+    // 1. Try connecting to already running server with 3s ping timeout so it doesn't hang startup
     try {
       const client = createOpencodeClient({ baseUrl: url, directory: options?.directory });
-      // Ping check
-      await client.session.list({ query: { directory: options?.directory } });
+      // Ping check with 3s timeout
+      await Promise.race([
+        client.session.list({ query: { directory: options?.directory } }),
+        new Promise((_, reject) => setTimeout(() => reject(new Error("OpenCode ping timeout")), 3000)),
+      ]);
       sharedClient = client;
       return sharedClient;
     } catch {
@@ -160,12 +163,13 @@ export async function getOpencodeClient(options?: { directory?: string }): Promi
         const started = await createOpencode({
           hostname: "127.0.0.1",
           port: 4096,
-          timeout: 15000,
+          timeout: 5000,
         });
         sharedServer = started.server;
         sharedClient = started.client;
         return sharedClient;
       } catch (err) {
+        clientPromise = null;
         console.warn("[OpenCode SDK] Could not start or connect to opencode server:", err);
         throw err;
       }
@@ -636,9 +640,23 @@ export class OpenCodeSdkEngine implements AgentEngine {
 
       let activeSubagentToolUseId: string | undefined;
       const childSessionToParentToolUseId = new Map<string, string>();
+      const startedToolCallIds = new Set<string>();
+      const sentToolInputIds = new Set<string>();
+      const completedToolCallIds = new Set<string>();
+
+      let watchdogTimer: ReturnType<typeof setTimeout> | null = null;
+      const resetWatchdog = (timeoutMs = 90000) => {
+        if (watchdogTimer) clearTimeout(watchdogTimer);
+        watchdogTimer = setTimeout(() => {
+          this.interrupted = true;
+          void client.session.abort({ path: { id: sessionId } }).catch(() => {});
+        }, timeoutMs);
+      };
+      resetWatchdog(90000);
 
       // Stream events from SSE for this turn
       for await (const event of sse.stream) {
+        resetWatchdog(90000);
         if (this.interrupted) {
           await client.session.abort({ path: { id: sessionId } }).catch(() => { });
           break;
@@ -687,14 +705,18 @@ export class OpenCodeSdkEngine implements AgentEngine {
             if (part?.type === "tool") {
               const childToolId = part.callID || part.id;
               if (part.state?.status === "running" || part.state?.status === "pending") {
-                yield {
-                  type: "tool_call_start",
-                  id: childToolId,
-                  name: part.tool,
-                  parentToolUseId: parentId,
-                  childSessionId: evtSessionId,
-                };
-                if (part.state.input) {
+                if (!startedToolCallIds.has(childToolId)) {
+                  startedToolCallIds.add(childToolId);
+                  yield {
+                    type: "tool_call_start",
+                    id: childToolId,
+                    name: part.tool,
+                    parentToolUseId: parentId,
+                    childSessionId: evtSessionId,
+                  };
+                }
+                if (part.state.input && !sentToolInputIds.has(childToolId)) {
+                  sentToolInputIds.add(childToolId);
                   yield {
                     type: "tool_call_delta",
                     id: childToolId,
@@ -704,20 +726,43 @@ export class OpenCodeSdkEngine implements AgentEngine {
                   };
                 }
               } else if (part.state?.status === "completed" || part.state?.status === "error") {
-                yield {
-                  type: "tool_call_end",
-                  id: childToolId,
-                  parentToolUseId: parentId,
-                  childSessionId: evtSessionId,
-                };
-                yield {
-                  type: "tool_result",
-                  id: childToolId,
-                  content: typeof part.state.output === "string" ? part.state.output : JSON.stringify(part.state.output ?? ""),
-                  isError: part.state.status === "error",
-                  parentToolUseId: parentId,
-                  childSessionId: evtSessionId,
-                };
+                if (!startedToolCallIds.has(childToolId)) {
+                  startedToolCallIds.add(childToolId);
+                  yield {
+                    type: "tool_call_start",
+                    id: childToolId,
+                    name: part.tool,
+                    parentToolUseId: parentId,
+                    childSessionId: evtSessionId,
+                  };
+                }
+                if (part.state.input && !sentToolInputIds.has(childToolId)) {
+                  sentToolInputIds.add(childToolId);
+                  yield {
+                    type: "tool_call_delta",
+                    id: childToolId,
+                    partialJson: typeof part.state.input === "string" ? part.state.input : JSON.stringify(part.state.input),
+                    parentToolUseId: parentId,
+                    childSessionId: evtSessionId,
+                  };
+                }
+                if (!completedToolCallIds.has(childToolId)) {
+                  completedToolCallIds.add(childToolId);
+                  yield {
+                    type: "tool_call_end",
+                    id: childToolId,
+                    parentToolUseId: parentId,
+                    childSessionId: evtSessionId,
+                  };
+                  yield {
+                    type: "tool_result",
+                    id: childToolId,
+                    content: typeof part.state.output === "string" ? part.state.output : JSON.stringify(part.state.output ?? ""),
+                    isError: part.state.status === "error",
+                    parentToolUseId: parentId,
+                    childSessionId: evtSessionId,
+                  };
+                }
               }
             }
           }
@@ -752,8 +797,12 @@ export class OpenCodeSdkEngine implements AgentEngine {
               if (isSubagentTool) {
                 activeSubagentToolUseId = toolCallId;
               }
-              yield { type: "tool_call_start", id: toolCallId, name: part.tool };
-              if (part.state.input) {
+              if (!startedToolCallIds.has(toolCallId)) {
+                startedToolCallIds.add(toolCallId);
+                yield { type: "tool_call_start", id: toolCallId, name: part.tool };
+              }
+              if (part.state.input && !sentToolInputIds.has(toolCallId)) {
+                sentToolInputIds.add(toolCallId);
                 yield {
                   type: "tool_call_delta",
                   id: toolCallId,
@@ -764,13 +813,28 @@ export class OpenCodeSdkEngine implements AgentEngine {
               if (activeSubagentToolUseId === toolCallId) {
                 activeSubagentToolUseId = undefined;
               }
-              yield { type: "tool_call_end", id: toolCallId };
-              yield {
-                type: "tool_result",
-                id: toolCallId,
-                content: typeof part.state.output === "string" ? part.state.output : JSON.stringify(part.state.output ?? ""),
-                isError: part.state.status === "error",
-              };
+              if (!startedToolCallIds.has(toolCallId)) {
+                startedToolCallIds.add(toolCallId);
+                yield { type: "tool_call_start", id: toolCallId, name: part.tool };
+              }
+              if (part.state.input && !sentToolInputIds.has(toolCallId)) {
+                sentToolInputIds.add(toolCallId);
+                yield {
+                  type: "tool_call_delta",
+                  id: toolCallId,
+                  partialJson: typeof part.state.input === "string" ? part.state.input : JSON.stringify(part.state.input),
+                };
+              }
+              if (!completedToolCallIds.has(toolCallId)) {
+                completedToolCallIds.add(toolCallId);
+                yield { type: "tool_call_end", id: toolCallId };
+                yield {
+                  type: "tool_result",
+                  id: toolCallId,
+                  content: typeof part.state.output === "string" ? part.state.output : JSON.stringify(part.state.output ?? ""),
+                  isError: part.state.status === "error",
+                };
+              }
             }
           } else if (part.type === "step-finish") {
             if (part.tokens) {
@@ -1014,10 +1078,19 @@ export class OpenCodeSdkEngine implements AgentEngine {
             message: typeof err === "string" ? err : JSON.stringify(err),
           };
           break;
-        } else if (event.type === "session.idle" && (props?.sessionID === sessionId || evtSessionId === sessionId)) {
+        } else if (
+          (event.type === "session.idle" ||
+            (event.type === "session.status" && (props?.status?.type === "idle" || props?.status === "idle"))) &&
+          (props?.sessionID === sessionId || evtSessionId === sessionId || !props?.sessionID)
+        ) {
           // Completed this turn
           break;
         }
+      }
+
+      if (watchdogTimer) {
+        clearTimeout(watchdogTimer);
+        watchdogTimer = null;
       }
 
       this.totalApiDurationMs += Math.max(0, Date.now() - turnStart);

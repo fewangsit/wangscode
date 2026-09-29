@@ -182,6 +182,7 @@ export function createMessageRenderer(chatStore: ChatStore, sessionStatus: Sessi
 
     if (message.type === "result") {
       if (message.modelUsage) sessionStatus.accumulateUsage(message.modelUsage);
+      chatStore.finalizeTurn(message.subtype !== "success");
       if (message.subtype === "success") {
         chatStore.pushFooter(`[cost: $${message.total_cost_usd.toFixed(6)}]`);
       } else {

@@ -148,6 +148,9 @@ export class ChatStore {
   }
 
   startToolCall(toolUseId: string, name: string): void {
+    if (this.toolIndex.has(toolUseId)) {
+      return;
+    }
     const id = this.nextId++;
     this.toolIndex.set(toolUseId, id);
     const isSubagent =
@@ -169,14 +172,32 @@ export class ChatStore {
   }
 
   appendToolInputDelta(toolUseId: string, partialJson: string): void {
-    const raw = (this.toolInputBuffers.get(toolUseId) ?? "") + partialJson;
+    let raw = (this.toolInputBuffers.get(toolUseId) ?? "") + partialJson;
+    const trimmed = partialJson.trim();
+    if (trimmed.startsWith("{") && trimmed.endsWith("}")) {
+      try {
+        JSON.parse(trimmed);
+        raw = trimmed;
+      } catch {
+        // Fall back to accumulated raw
+      }
+    }
     this.toolInputBuffers.set(toolUseId, raw);
 
     let parsed: unknown = null;
     try {
       parsed = raw.length > 0 ? JSON.parse(raw) : {};
     } catch {
-      // Incomplete streaming JSON — attempt regex extraction for early detection
+      // Incomplete streaming JSON — attempt to parse inner object if multiple were concatenated
+      const first = raw.indexOf("{");
+      const last = raw.lastIndexOf("}");
+      if (first !== -1 && last > first) {
+        try {
+          parsed = JSON.parse(raw.slice(first, last + 1));
+        } catch {
+          // Incomplete streaming JSON — fall back to regex extraction
+        }
+      }
     }
 
     let inputObj = typeof parsed === "object" && parsed !== null ? (parsed as Record<string, unknown>) : null;
@@ -186,8 +207,8 @@ export class ChatStore {
         raw.match(/"subagent"\s*:\s*"([^"]+)"/) ||
         raw.match(/"agent"\s*:\s*"([^"]+)"/) ||
         raw.match(/"name"\s*:\s*"([^"]+)"/);
-      const descMatch = raw.match(/"description"\s*:\s*"([^"]+)"/);
-      const promptMatch = raw.match(/"prompt"\s*:\s*"([^"]+)"/);
+      const descMatch = raw.match(/"description"\s*:\s*"([^"]+)"/) || raw.match(/"task"\s*:\s*"([^"]+)"/);
+      const promptMatch = raw.match(/"prompt"\s*:\s*"([^"]+)"/) || raw.match(/"instructions"\s*:\s*"([^"]+)"/);
 
       if (subagentMatch || descMatch || promptMatch) {
         inputObj = {
@@ -200,32 +221,46 @@ export class ChatStore {
 
     if (inputObj) {
       const inferredType = inferSubagentType(inputObj);
+      const subagentType =
+        (inferredType !== "subagent" ? inferredType : undefined) ||
+        (typeof inputObj.subagent_type === "string" ? inputObj.subagent_type : undefined) ||
+        (typeof inputObj.subagent === "string" ? inputObj.subagent : undefined) ||
+        (typeof inputObj.agent === "string" ? inputObj.agent : undefined) ||
+        (typeof inputObj.category === "string" ? inputObj.category : undefined) ||
+        (typeof inputObj.type === "string" && inputObj.type !== "task" ? inputObj.type : undefined) ||
+        (typeof inputObj.name === "string" ? inputObj.name : undefined);
+
+      const description =
+        (typeof inputObj.description === "string" && inputObj.description ? inputObj.description : undefined) ||
+        (typeof inputObj.task === "string" && inputObj.task ? inputObj.task : undefined) ||
+        (typeof inputObj.title === "string" && inputObj.title ? inputObj.title : undefined) ||
+        (typeof inputObj.summary === "string" && inputObj.summary ? inputObj.summary : undefined);
+
+      const prompt =
+        (typeof inputObj.prompt === "string" && inputObj.prompt ? inputObj.prompt : undefined) ||
+        (typeof inputObj.task === "string" && inputObj.task ? inputObj.task : undefined) ||
+        (typeof inputObj.instructions === "string" && inputObj.instructions ? inputObj.instructions : undefined) ||
+        (typeof inputObj.query === "string" && inputObj.query ? inputObj.query : undefined) ||
+        description;
+
       const isSub = Boolean(
-        (inferredType && inferredType !== "subagent") ||
-          (inputObj &&
-            (typeof inputObj.subagent_type === "string" ||
-              typeof inputObj.subagent === "string" ||
-              typeof inputObj.agent === "string" ||
-              typeof inputObj.name === "string"))
+        (subagentType && subagentType !== "subagent") ||
+          description ||
+          prompt ||
+          inputObj.subagent_type ||
+          inputObj.subagent ||
+          inputObj.agent
       );
 
       this.updateToolBlock(toolUseId, (block) => {
         const isSubagent = block.isSubagent || isSub;
-        const subagentType =
-          (inferredType !== "subagent" ? inferredType : undefined) ||
-          (inputObj?.subagent_type as string) ||
-          (inputObj?.subagent as string) ||
-          (inputObj?.agent as string) ||
-          (inputObj?.name as string) ||
-          block.subagentType;
-
         return {
           ...block,
           input: parsed ?? block.input ?? inputObj,
           isSubagent,
-          subagentType,
-          subagentPrompt: (inputObj?.prompt as string) || block.subagentPrompt,
-          subagentDescription: (inputObj?.description as string) || block.subagentDescription,
+          subagentType: subagentType ?? block.subagentType,
+          subagentPrompt: prompt ?? block.subagentPrompt,
+          subagentDescription: description ?? block.subagentDescription,
           subagentEvents: block.subagentEvents ?? (isSubagent ? [] : undefined),
         };
       });
@@ -241,37 +276,62 @@ export class ChatStore {
     try {
       parsed = raw.length > 0 ? JSON.parse(raw) : {};
     } catch {
-      parsed = raw; // malformed JSON (shouldn't happen, but don't lose the data if it does) — show the raw string
+      const first = raw.indexOf("{");
+      const last = raw.lastIndexOf("}");
+      if (first !== -1 && last > first) {
+        try {
+          parsed = JSON.parse(raw.slice(first, last + 1));
+        } catch {
+          // ignore
+        }
+      }
+      if (!parsed) {
+        parsed = raw;
+      }
     }
 
     const inputObj = typeof parsed === "object" && parsed !== null ? (parsed as Record<string, unknown>) : null;
     const inferredType = inferSubagentType(inputObj);
+    const subagentType =
+      (inferredType !== "subagent" ? inferredType : undefined) ||
+      (typeof inputObj?.subagent_type === "string" ? inputObj.subagent_type : undefined) ||
+      (typeof inputObj?.subagent === "string" ? inputObj.subagent : undefined) ||
+      (typeof inputObj?.agent === "string" ? inputObj.agent : undefined) ||
+      (typeof inputObj?.category === "string" ? inputObj.category : undefined) ||
+      (typeof inputObj?.type === "string" && inputObj.type !== "task" ? inputObj.type : undefined) ||
+      (typeof inputObj?.name === "string" ? inputObj.name : undefined);
+
+    const description =
+      (typeof inputObj?.description === "string" && inputObj.description ? inputObj.description : undefined) ||
+      (typeof inputObj?.task === "string" && inputObj.task ? inputObj.task : undefined) ||
+      (typeof inputObj?.title === "string" && inputObj.title ? inputObj.title : undefined) ||
+      (typeof inputObj?.summary === "string" && inputObj.summary ? inputObj.summary : undefined);
+
+    const prompt =
+      (typeof inputObj?.prompt === "string" && inputObj.prompt ? inputObj.prompt : undefined) ||
+      (typeof inputObj?.task === "string" && inputObj.task ? inputObj.task : undefined) ||
+      (typeof inputObj?.instructions === "string" && inputObj.instructions ? inputObj.instructions : undefined) ||
+      (typeof inputObj?.query === "string" && inputObj.query ? inputObj.query : undefined) ||
+      description;
+
     const isSub = Boolean(
-      (inferredType && inferredType !== "subagent") ||
-        (inputObj &&
-          (typeof inputObj.subagent_type === "string" ||
-            typeof inputObj.subagent === "string" ||
-            typeof inputObj.agent === "string" ||
-            typeof inputObj.name === "string"))
+      (subagentType && subagentType !== "subagent") ||
+        description ||
+        prompt ||
+        inputObj?.subagent_type ||
+        inputObj?.subagent ||
+        inputObj?.agent
     );
 
     this.updateToolBlock(toolUseId, (block) => {
       const isSubagent = block.isSubagent || isSub;
-      const subagentType =
-        (inferredType !== "subagent" ? inferredType : undefined) ||
-        (inputObj?.subagent_type as string) ||
-        (inputObj?.subagent as string) ||
-        (inputObj?.agent as string) ||
-        (inputObj?.name as string) ||
-        block.subagentType;
-
       return {
         ...block,
         input: parsed,
         isSubagent,
-        subagentType,
-        subagentPrompt: (inputObj?.prompt as string) || block.subagentPrompt,
-        subagentDescription: (inputObj?.description as string) || block.subagentDescription,
+        subagentType: subagentType ?? block.subagentType,
+        subagentPrompt: prompt ?? block.subagentPrompt,
+        subagentDescription: description ?? block.subagentDescription,
         subagentEvents: block.subagentEvents ?? (isSubagent ? [] : undefined),
       };
     });
@@ -320,15 +380,33 @@ export class ChatStore {
 
   /** Reveals all buffered typing animation immediately — used on shutdown/interrupt, not normal flow. */
   flushAll(): void {
+    this.finalizeTurn(true);
+  }
+
+  /**
+   * Finalizes the current turn cleanly:
+   * 1. Resolves any orphan tools still marked 'running' to 'done' (or 'error').
+   * 2. Flushes all pending typewriters and marks streaming as false.
+   * 3. Clears waitingStore and ends the turn.
+   */
+  finalizeTurn(isError = false): void {
     this.store.update((blocks) =>
       blocks.map((block) => {
-        if (block.kind !== "assistant" && block.kind !== "thinking") return block;
-        const tw = this.typewriters.get(block.id);
-        if (!tw) return block;
-        const rest = tw.flush();
-        this.typewriters.delete(block.id);
-        this.sdkDone.delete(block.id);
-        return { ...block, text: block.text + rest, streaming: false };
+        if (block.kind === "tool" && block.status === "running") {
+          return {
+            ...block,
+            status: isError ? "error" : "done",
+            completedAt: block.completedAt ?? Date.now(),
+          };
+        }
+        if (block.kind === "assistant" || block.kind === "thinking") {
+          const tw = this.typewriters.get(block.id);
+          const rest = tw ? tw.flush() : "";
+          this.typewriters.delete(block.id);
+          this.sdkDone.delete(block.id);
+          return { ...block, text: block.text + rest, streaming: false };
+        }
+        return block;
       }),
     );
     this.activeStreamingId.clear();

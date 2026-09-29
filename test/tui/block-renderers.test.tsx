@@ -144,5 +144,38 @@ describe("BlockRenderers - CollapsibleJson", () => {
     expect(output).toContain("Output Report:");
     expect(output).toContain("WANGS-UI QUERIER REPORT");
   });
+
+  test("renderBlock with Subagent renders clickable subagent header with title", async () => {
+    const testRenderer = await createTestRenderer({ width: 90, height: 10 });
+    const root = createRoot(testRenderer.renderer);
+
+    const subagentBlock: ChatBlock = {
+      id: 3,
+      kind: "tool",
+      toolUseId: "agent-click-test",
+      name: "Agent",
+      input: {
+        subagent_type: "ui-design-reader",
+      },
+      status: "done",
+      isSkill: false,
+      isSubagent: true,
+      subagentType: "ui-design-reader",
+    };
+
+    let clickedId: string | null = null;
+    const onOpen = (id: string) => {
+      clickedId = id;
+    };
+
+    root.render(renderBlock(subagentBlock, syntaxStyle, onOpen));
+    await new Promise((r) => setTimeout(r, 60));
+    await testRenderer.renderOnce();
+
+    const output = testRenderer.captureCharFrame();
+    expect(output).toContain("Ui Design Reader");
+    expect(output).not.toContain("Detail ↗");
+  });
 });
+
 

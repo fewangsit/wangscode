@@ -11,7 +11,6 @@ import {
   inferSubagentType,
   isJsonString,
   parseToolName,
-  shortenPath,
 } from "./format.ts";
 import { DIFF_ADD_BG, DIFF_DEL_BG, GOLD, GOLD_DIM, ROLE_COLOR, TOOL_STATUS_COLOR, TOOL_STATUS_GLYPH } from "./theme.ts";
 
@@ -249,9 +248,11 @@ const BRAILLE_SPINNERS = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧"
 function SubagentChildView({
   block,
   syntaxStyle,
+  onOpenSubagentDetail,
 }: {
   block: Extract<ChatBlock, { kind: "tool" }>;
   syntaxStyle: SyntaxStyle;
+  onOpenSubagentDetail?: (toolUseId: string) => void;
 }): React.ReactNode {
   const [expanded, setExpanded] = useState(true);
   const [spinnerIdx, setSpinnerIdx] = useState(0);
@@ -302,7 +303,13 @@ function SubagentChildView({
       {/* Header line: ⠋ General Task - Migrate batch 2 web.ts files (part A) */}
       <box
         style={{ flexDirection: "row", alignItems: "center" }}
-        onMouseDown={() => setExpanded((prev) => !prev)}
+        onMouseDown={() => {
+          if (onOpenSubagentDetail) {
+            onOpenSubagentDetail(block.toolUseId);
+          } else {
+            setExpanded((prev) => !prev);
+          }
+        }}
       >
         <text content={`${glyph} `} style={{ fg: glyphColor }} />
         <text content={formattedTitle} style={{ fg: "#ffffff" }} />
@@ -317,7 +324,14 @@ function SubagentChildView({
         {durationSec ? (
           <text content={` (${durationSec}s)`} style={{ fg: "#565f89" }} />
         ) : null}
-        <text content={` ${toggleGlyph}`} style={{ fg: "#565f89" }} />
+        <text
+          content={` ${toggleGlyph}`}
+          style={{ fg: "#565f89" }}
+          onMouseDown={(e) => {
+            e?.stopPropagation?.();
+            setExpanded((prev) => !prev);
+          }}
+        />
       </box>
 
       {/* Child events: ↳ Grep ... / ↳ Read ... / ↳ Bash ... */}
@@ -374,7 +388,15 @@ function SubagentChildView({
   );
 }
 
-function ToolCallRow({ block, syntaxStyle }: { block: Extract<ChatBlock, { kind: "tool" }>; syntaxStyle: SyntaxStyle }): React.ReactNode {
+function ToolCallRow({
+  block,
+  syntaxStyle,
+  onOpenSubagentDetail,
+}: {
+  block: Extract<ChatBlock, { kind: "tool" }>;
+  syntaxStyle: SyntaxStyle;
+  onOpenSubagentDetail?: (toolUseId: string) => void;
+}): React.ReactNode {
   const { toolName } = parseToolName(block.name);
   const inputObj = typeof block.input === "object" && block.input !== null ? (block.input as Record<string, unknown>) : null;
   const isAgent =
@@ -386,7 +408,7 @@ function ToolCallRow({ block, syntaxStyle }: { block: Extract<ChatBlock, { kind:
     Boolean(inputObj && ("subagent_type" in inputObj || "subagent" in inputObj || "agent" in inputObj));
 
   if (isAgent) {
-    return <SubagentChildView block={block} syntaxStyle={syntaxStyle} />;
+    return <SubagentChildView block={block} syntaxStyle={syntaxStyle} onOpenSubagentDetail={onOpenSubagentDetail} />;
   }
 
   const glyph = TOOL_STATUS_GLYPH[block.status];
@@ -596,7 +618,11 @@ function ThinkingRow({ block }: { block: Extract<ChatBlock, { kind: "thinking" }
  *  positional argument through a .map() callback — the latter tripped oxlint's react(refs) check,
  *  a real if overly cautious static-analysis limit (it can't trace that the callback is only ever
  *  attached as an onMouseDown prop several components down, never called during render). */
-export function renderBlock(block: ChatBlock, syntaxStyle: SyntaxStyle): React.ReactNode {
+export function renderBlock(
+  block: ChatBlock,
+  syntaxStyle: SyntaxStyle,
+  onOpenSubagentDetail?: (toolUseId: string) => void,
+): React.ReactNode {
   switch (block.kind) {
     case "welcome":
       return null;
@@ -607,7 +633,7 @@ export function renderBlock(block: ChatBlock, syntaxStyle: SyntaxStyle): React.R
     case "thinking":
       return <ThinkingRow key={block.id} block={block} />;
     case "tool":
-      return <ToolCallRow key={block.id} block={block} syntaxStyle={syntaxStyle} />;
+      return <ToolCallRow key={block.id} block={block} syntaxStyle={syntaxStyle} onOpenSubagentDetail={onOpenSubagentDetail} />;
     case "host":
       return <markdown key={block.id} content={block.text} syntaxStyle={syntaxStyle} style={{ marginBottom: 1, fg: ROLE_COLOR.host }} />;
     case "footer":

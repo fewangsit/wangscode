@@ -44,6 +44,7 @@ export const HOST_COMMANDS: CommandDescriptor[] = [
   { name: "/rename", description: "Rename the current session title" },
   { name: "/mcp", description: "Inspect MCP servers and tools" },
   { name: "/artifacts", description: "Browse your published and shared artifacts" },
+  { name: "/subagents", description: "Inspect subagent execution history, child tool calls, and reports" },
   { name: "/create-feature", description: "Run the deterministic feature-build pipeline" },
   { name: "/doctor", description: "Check and sync agent skills (TestSpectra, Wangs UI), fetching on demand if needed" },
   { name: "/exit", description: "Quit Wangs Code" },

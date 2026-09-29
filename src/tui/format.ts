@@ -79,11 +79,13 @@ export function inferSubagentType(inputObj: Record<string, unknown> | null, defa
   if (typeof inputObj.subagent === "string" && inputObj.subagent) return inputObj.subagent;
   if (typeof inputObj.agent === "string" && inputObj.agent) return inputObj.agent;
   if (typeof inputObj.name === "string" && inputObj.name) return inputObj.name;
+  if (typeof inputObj.type === "string" && inputObj.type && inputObj.type !== "task") return inputObj.type;
+  if (typeof inputObj.category === "string" && inputObj.category) return inputObj.category;
 
-  const combined = `${inputObj.description ?? ""} ${inputObj.prompt ?? ""}`.toLowerCase();
+  const combined = `${inputObj.description ?? ""} ${inputObj.prompt ?? ""} ${inputObj.task ?? ""}`.toLowerCase();
   if (combined.includes("ui-design-reader") || combined.includes("ui design reader") || combined.includes("ui_design_reader")) return "ui-design-reader";
   if (combined.includes("functional-reader") || combined.includes("functional reader") || combined.includes("functional_reader")) return "functional-reader";
-  if (combined.includes("test-case-reader") || combined.includes("test case reader") || combined.includes("test_case_reader")) return "test-case-reader";
+  if (combined.includes("test-case-reader") || combined.includes("test case reader") || combined.includes("test_case_reader") || combined.includes("testcase") || combined.includes("test case")) return "test-case-reader";
   if (combined.includes("wangs-ui-querier") || combined.includes("wangs ui querier") || combined.includes("wangs_ui_querier")) return "wangs-ui-querier";
 
   return defaultType;
