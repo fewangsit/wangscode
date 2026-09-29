@@ -3,11 +3,12 @@
 // plain host code (state, gates, routing) — see docs/ + the architecture
 // doc this implements for why that split matters: control flow must live in
 // code the model cannot talk its way around.
-import { query, SYSTEM_PROMPT_DYNAMIC_BOUNDARY, type Options, type SDKMessage } from "../engine/index.ts";
+import { query, SYSTEM_PROMPT_DYNAMIC_BOUNDARY, type CanUseTool, type Options, type SDKMessage } from "../engine/index.ts";
 
 import { DOCS_KNOWLEDGE_MCP_SERVERS } from "../docs-knowledge.ts";
 import { resolveWangsUiMcpServer } from "../mcp-sync.ts";
 import { PRIMARY_RULES } from "../primary-rules.ts";
+import { DEFAULT_MODEL } from "../session-options.ts";
 import { WANGS_SUBAGENTS } from "../subagents.ts";
 import { PIPELINE_SYSTEM_PREAMBLE } from "./system-prompt.ts";
 
@@ -17,6 +18,7 @@ export interface RunAgentTurnParams {
   allowedTools: string[];
   outputFormat?: { type: "json_schema"; schema: Record<string, unknown> };
   model?: string;
+  canUseTool?: CanUseTool;
   /**
    * Identical text across every phase turn in one feature-build run (today:
    * the RequirementBundle — see prompts.ts's buildCacheableContext). Placed
@@ -54,7 +56,7 @@ export async function runAgentTurn(params: RunAgentTurnParams): Promise<AgentTur
 
   const options: Options = {
     cwd: params.repoRoot,
-    model: params.model ?? "claude-sonnet-5",
+    model: params.model ?? DEFAULT_MODEL,
     allowedTools: params.allowedTools,
     // Without this the turn emits only completed `assistant` messages — never the
     // `stream_event` content-block deltas the chat renderer streams from (see render.ts's
@@ -91,11 +93,11 @@ export async function runAgentTurn(params: RunAgentTurnParams): Promise<AgentTur
       type: "custom",
       prompt: [PIPELINE_SYSTEM_PREAMBLE, PRIMARY_RULES, ...(params.cacheablePrefix ? [params.cacheablePrefix] : []), SYSTEM_PROMPT_DYNAMIC_BOUNDARY],
     },
-    // Headless CLI orchestrator — there is no terminal for interactive
-    // approval prompts. The real safety boundary is `allowedTools` above,
-    // scoped per phase by the caller (see run.ts's PHASE_TOOL_ALLOWLIST).
-    permissionMode: "bypassPermissions",
-    allowDangerouslySkipPermissions: true,
+    // In OpenCode, skipping permissions without interactive approval requires OPENCODE_DANGEROUSLY_SKIP_PERMISSIONS=true
+    allowDangerouslySkipPermissions:
+      process.env.OPENCODE_DANGEROUSLY_SKIP_PERMISSIONS === "true" ||
+      process.env.OPENCODE_DANGEROUSLY_SKIP_PERMISSIONS === "1",
+    canUseTool: params.canUseTool,
     // Keep adaptive thinking (the model default) but ask for SUMMARY text instead of the
     // headless default ('omitted'). Without this, thinking_delta frames carry only an
     // `estimated_tokens` counter and no `.thinking` string — confirmed live against this SDK —

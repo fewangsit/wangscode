@@ -1,5 +1,15 @@
 import { Store } from "./store.ts";
 import { Typewriter } from "./typewriter.ts";
+import { inferSubagentType } from "./format.ts";
+
+export interface SubagentChildEvent {
+  id: string;
+  type: "thinking" | "tool_call" | "text";
+  name?: string;
+  content: string;
+  status?: "running" | "done" | "error";
+  timestamp: number;
+}
 
 export interface ToolCallBlock {
   id: number;
@@ -10,6 +20,14 @@ export interface ToolCallBlock {
   status: "running" | "done" | "error";
   resultText?: string;
   isSkill: boolean;
+  isSubagent?: boolean;
+  subagentType?: string;
+  subagentPrompt?: string;
+  subagentDescription?: string;
+  startedAt?: number;
+  completedAt?: number;
+  childSessionId?: string;
+  subagentEvents?: SubagentChildEvent[];
 }
 
 export type ChatBlock =
@@ -132,12 +150,86 @@ export class ChatStore {
   startToolCall(toolUseId: string, name: string): void {
     const id = this.nextId++;
     this.toolIndex.set(toolUseId, id);
-    this.push({ id, kind: "tool", toolUseId, name, input: null, status: "running", isSkill: name === "Skill" });
+    const isSubagent =
+      name.toLowerCase() === "agent" ||
+      name.toLowerCase() === "subagent" ||
+      name.toLowerCase() === "task";
+    this.push({
+      id,
+      kind: "tool",
+      toolUseId,
+      name,
+      input: null,
+      status: "running",
+      isSkill: name === "Skill",
+      isSubagent,
+      startedAt: Date.now(),
+      subagentEvents: isSubagent ? [] : undefined,
+    });
   }
 
   appendToolInputDelta(toolUseId: string, partialJson: string): void {
-    const raw = this.toolInputBuffers.get(toolUseId) ?? "";
-    this.toolInputBuffers.set(toolUseId, raw + partialJson);
+    const raw = (this.toolInputBuffers.get(toolUseId) ?? "") + partialJson;
+    this.toolInputBuffers.set(toolUseId, raw);
+
+    let parsed: unknown = null;
+    try {
+      parsed = raw.length > 0 ? JSON.parse(raw) : {};
+    } catch {
+      // Incomplete streaming JSON — attempt regex extraction for early detection
+    }
+
+    let inputObj = typeof parsed === "object" && parsed !== null ? (parsed as Record<string, unknown>) : null;
+    if (!inputObj && raw.length > 0) {
+      const subagentMatch =
+        raw.match(/"subagent_type"\s*:\s*"([^"]+)"/) ||
+        raw.match(/"subagent"\s*:\s*"([^"]+)"/) ||
+        raw.match(/"agent"\s*:\s*"([^"]+)"/) ||
+        raw.match(/"name"\s*:\s*"([^"]+)"/);
+      const descMatch = raw.match(/"description"\s*:\s*"([^"]+)"/);
+      const promptMatch = raw.match(/"prompt"\s*:\s*"([^"]+)"/);
+
+      if (subagentMatch || descMatch || promptMatch) {
+        inputObj = {
+          subagent_type: subagentMatch?.[1],
+          description: descMatch?.[1],
+          prompt: promptMatch?.[1],
+        };
+      }
+    }
+
+    if (inputObj) {
+      const inferredType = inferSubagentType(inputObj);
+      const isSub = Boolean(
+        (inferredType && inferredType !== "subagent") ||
+          (inputObj &&
+            (typeof inputObj.subagent_type === "string" ||
+              typeof inputObj.subagent === "string" ||
+              typeof inputObj.agent === "string" ||
+              typeof inputObj.name === "string"))
+      );
+
+      this.updateToolBlock(toolUseId, (block) => {
+        const isSubagent = block.isSubagent || isSub;
+        const subagentType =
+          (inferredType !== "subagent" ? inferredType : undefined) ||
+          (inputObj?.subagent_type as string) ||
+          (inputObj?.subagent as string) ||
+          (inputObj?.agent as string) ||
+          (inputObj?.name as string) ||
+          block.subagentType;
+
+        return {
+          ...block,
+          input: parsed ?? block.input ?? inputObj,
+          isSubagent,
+          subagentType,
+          subagentPrompt: (inputObj?.prompt as string) || block.subagentPrompt,
+          subagentDescription: (inputObj?.description as string) || block.subagentDescription,
+          subagentEvents: block.subagentEvents ?? (isSubagent ? [] : undefined),
+        };
+      });
+    }
   }
 
   finishToolInput(toolUseId: string): void {
@@ -151,11 +243,79 @@ export class ChatStore {
     } catch {
       parsed = raw; // malformed JSON (shouldn't happen, but don't lose the data if it does) — show the raw string
     }
-    this.updateToolBlock(toolUseId, (block) => ({ ...block, input: parsed }));
+
+    const inputObj = typeof parsed === "object" && parsed !== null ? (parsed as Record<string, unknown>) : null;
+    const inferredType = inferSubagentType(inputObj);
+    const isSub = Boolean(
+      (inferredType && inferredType !== "subagent") ||
+        (inputObj &&
+          (typeof inputObj.subagent_type === "string" ||
+            typeof inputObj.subagent === "string" ||
+            typeof inputObj.agent === "string" ||
+            typeof inputObj.name === "string"))
+    );
+
+    this.updateToolBlock(toolUseId, (block) => {
+      const isSubagent = block.isSubagent || isSub;
+      const subagentType =
+        (inferredType !== "subagent" ? inferredType : undefined) ||
+        (inputObj?.subagent_type as string) ||
+        (inputObj?.subagent as string) ||
+        (inputObj?.agent as string) ||
+        (inputObj?.name as string) ||
+        block.subagentType;
+
+      return {
+        ...block,
+        input: parsed,
+        isSubagent,
+        subagentType,
+        subagentPrompt: (inputObj?.prompt as string) || block.subagentPrompt,
+        subagentDescription: (inputObj?.description as string) || block.subagentDescription,
+        subagentEvents: block.subagentEvents ?? (isSubagent ? [] : undefined),
+      };
+    });
   }
 
   completeToolCall(toolUseId: string, resultText: string, isError: boolean): void {
-    this.updateToolBlock(toolUseId, (block) => ({ ...block, status: isError ? "error" : "done", resultText }));
+    this.updateToolBlock(toolUseId, (block) => ({
+      ...block,
+      status: isError ? "error" : "done",
+      resultText,
+      completedAt: Date.now(),
+    }));
+  }
+
+  appendSubagentEvent(toolUseId: string, event: SubagentChildEvent): void {
+    this.updateToolBlock(toolUseId, (block) => {
+      const existing = block.subagentEvents ?? [];
+      const idx = event.id ? existing.findIndex((e) => e.id === event.id) : -1;
+      let nextEvents: SubagentChildEvent[];
+      if (idx !== -1) {
+        nextEvents = [...existing];
+        nextEvents[idx] = {
+          ...existing[idx]!,
+          ...event,
+          name: event.name ?? existing[idx]!.name,
+          content: event.content || existing[idx]!.content,
+          status: event.status ?? existing[idx]!.status,
+        };
+      } else {
+        nextEvents = [...existing, event];
+      }
+      return {
+        ...block,
+        isSubagent: true,
+        subagentEvents: nextEvents,
+      };
+    });
+  }
+
+  setChildSessionId(toolUseId: string, childSessionId: string): void {
+    this.updateToolBlock(toolUseId, (block) => ({
+      ...block,
+      childSessionId,
+    }));
   }
 
   /** Reveals all buffered typing animation immediately — used on shutdown/interrupt, not normal flow. */

@@ -19,7 +19,7 @@ const WANGS_PLUGIN_ROOT = path.join(PACKAGE_ROOT, "wangs-plugin");
 // waiting on the `system`/`init` message, which in practice doesn't arrive until the first turn
 // actually runs (confirmed: the underlying `claude` subprocess doesn't broadcast its own init
 // until it starts handling real work, not merely on spawn).
-export const DEFAULT_MODEL = "claude-sonnet-5";
+export const DEFAULT_MODEL = "opencode-go/qwen3.8-flash";
 export const DEFAULT_PERMISSION_MODE = "default";
 
 export interface SessionOptionsExtras {
@@ -74,10 +74,7 @@ export function buildSessionOptions(
       append: `${WANGS_PERSONA_APPEND}\n\n${PRIMARY_RULES}\n\n${DOCS_KNOWLEDGE_USAGE_NOTE}`,
       snapshot: true,
     },
-    // Interactive terminal, a human is present — canUseTool prompts them
-    // directly, so permissionMode stays "default" (not bypassPermissions,
-    // which is only correct for the pipeline's own headless model phases —
-    // see pipeline/agent-runner.ts).
+    // Interactive terminal, a human is present — canUseTool prompts them directly.
     permissionMode: DEFAULT_PERMISSION_MODE,
     canUseTool,
   };

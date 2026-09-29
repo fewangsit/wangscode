@@ -1,3 +1,4 @@
+import type { CanUseTool } from "./engine/index.ts";
 import { runFeatureBuildPipeline } from "./pipeline/index.ts";
 import type { FeatureBuildResult } from "./pipeline/index.ts";
 import { createPipelineProgressRenderer } from "./render.ts";
@@ -14,6 +15,8 @@ export interface FeatureBuildStartArgs {
   /** One or more API spec/LLD files (real modules pair a `.yaml` + `.md` per endpoint group). */
   openapi: string[];
   mode?: "interactive" | "auto";
+  model?: string;
+  canUseTool?: CanUseTool;
 }
 
 /** A failure that never reached the pipeline's own PhaseName-scoped status-reporting (bad path, a phase throwing unexpectedly, ...) — "host" is deliberately not a real PhaseName. */
@@ -57,6 +60,8 @@ export class FeatureBuildController {
     private readonly askLine: (prompt: string) => Promise<string>,
     private readonly project: string,
     private readonly chatStore: ChatStore,
+    private readonly getModel?: () => string,
+    private readonly canUseTool?: CanUseTool,
   ) {}
 
   isBusy(): boolean {
@@ -92,6 +97,8 @@ export class FeatureBuildController {
     try {
       const result = await runFeatureBuildPipeline({
         ...args,
+        model: args.model ?? this.getModel?.(),
+        canUseTool: args.canUseTool ?? this.canUseTool,
         project: this.project,
         mode: args.mode ?? "interactive",
         resume: false,
@@ -112,6 +119,8 @@ export class FeatureBuildController {
     try {
       const result = await runFeatureBuildPipeline({
         featureSlug: this.pending.featureSlug,
+        model: this.getModel?.(),
+        canUseTool: this.canUseTool,
         project: this.pending.project,
         mode: "interactive",
         resume: true,

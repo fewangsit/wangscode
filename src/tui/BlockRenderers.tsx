@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import type { SyntaxStyle } from "@opentui/core";
 
 import type { ChatBlock, ToolCallBlock } from "./chat-store.ts";
-import { formatToolCall, getNodeSummary, isJsonString, parseToolName } from "./format.ts";
+import { formatToolCall, getNodeSummary, inferSubagentType, isJsonString, parseToolName } from "./format.ts";
 import { DIFF_ADD_BG, DIFF_DEL_BG, GOLD, GOLD_DIM, ROLE_COLOR, TOOL_STATUS_COLOR, TOOL_STATUS_GLYPH } from "./theme.ts";
 
 export interface JsonNodeViewProps {
@@ -235,13 +235,134 @@ function EditDiffView({ oldString, newString }: { oldString: string; newString: 
   );
 }
 
+function SubagentChildView({
+  block,
+  syntaxStyle,
+}: {
+  block: Extract<ChatBlock, { kind: "tool" }>;
+  syntaxStyle: SyntaxStyle;
+}): React.ReactNode {
+  const [expanded, setExpanded] = useState(true);
+  const [elapsedSec, setElapsedSec] = useState(0);
+
+  useEffect(() => {
+    if (block.status !== "running" || !block.startedAt) return;
+    const interval = setInterval(() => {
+      setElapsedSec(Math.max(0, Math.floor((Date.now() - (block.startedAt ?? Date.now())) / 1000)));
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [block.status, block.startedAt]);
+
+  const inputObj = typeof block.input === "object" && block.input !== null ? (block.input as Record<string, unknown>) : null;
+  const subagentType =
+    block.subagentType ||
+    inferSubagentType(inputObj);
+  const taskDesc =
+    block.subagentDescription ||
+    (typeof inputObj?.description === "string" ? inputObj.description : undefined) ||
+    block.subagentPrompt ||
+    (typeof inputObj?.prompt === "string" ? inputObj.prompt : undefined);
+
+  const durationSec =
+    block.completedAt && block.startedAt
+      ? ((block.completedAt - block.startedAt) / 1000).toFixed(1)
+      : block.startedAt
+        ? ((Date.now() - block.startedAt) / 1000).toFixed(1)
+        : null;
+
+  const toggleGlyph = expanded ? "▼" : "▶";
+  const statusColor = TOOL_STATUS_COLOR[block.status] ?? GOLD;
+  const statusBadge =
+    block.status === "running"
+      ? `◌ Running (${elapsedSec}s)`
+      : block.status === "done"
+        ? `✓ Completed${durationSec ? ` (${durationSec}s)` : ""}`
+        : `✗ Failed${durationSec ? ` (${durationSec}s)` : ""}`;
+
+  return (
+    <box style={{ flexDirection: "column", marginBottom: 1, paddingLeft: 1 }}>
+      <box style={{ flexDirection: "row", alignItems: "center" }} onMouseDown={() => setExpanded((prev) => !prev)}>
+        <text content={`├─ 🔀 Child Agent: [${subagentType}] `} style={{ fg: "#7dcfff" }} />
+        <text content={` ${toggleGlyph} `} style={{ fg: "#565f89" }} />
+        <text content={statusBadge} style={{ fg: statusColor }} />
+      </box>
+
+      {expanded ? (
+        <box style={{ flexDirection: "column", paddingLeft: 3, marginTop: 1 }}>
+          {taskDesc ? (
+            <box style={{ flexDirection: "row", marginBottom: 1 }}>
+              <text content="│  ├─ 📋 Task: " style={{ fg: "#565f89" }} />
+              <text
+                content={taskDesc.replace(/\s+/g, " ").slice(0, 80) + (taskDesc.length > 80 ? "…" : "")}
+                style={{ fg: "#c0caf5" }}
+                wrapMode="none"
+                truncate
+              />
+            </box>
+          ) : null}
+
+          {block.subagentEvents && block.subagentEvents.length > 0 ? (
+            <box style={{ flexDirection: "column" }}>
+              {block.subagentEvents.map((ev, i) => (
+                <box key={ev.id || i} style={{ flexDirection: "row", marginBottom: 1 }}>
+                  {ev.type === "thinking" ? (
+                    <>
+                      <text content="│  ├─ 💭 Thinking: " style={{ fg: "#7aa2f7" }} />
+                      <text
+                        content={ev.content.replace(/\s+/g, " ").slice(0, 70)}
+                        style={{ fg: "#a9b1d6" }}
+                        wrapMode="none"
+                        truncate
+                      />
+                    </>
+                  ) : (
+                    <>
+                      <text
+                        content={`│  ├─ ${ev.status === "running" ? "◌" : ev.status === "error" ? "✗" : "🛠️"} Call [${ev.name ?? "tool"}]: `}
+                        style={{ fg: ev.status ? (TOOL_STATUS_COLOR[ev.status] ?? GOLD) : GOLD }}
+                      />
+                      <text content={ev.content.slice(0, 60)} style={{ fg: "#94a3b8" }} wrapMode="none" truncate />
+                    </>
+                  )}
+                </box>
+              ))}
+            </box>
+          ) : null}
+
+          {block.resultText ? (
+            <box style={{ flexDirection: "column", marginTop: 1 }}>
+              <text content="│  └─ 📄 Output Report:" style={{ fg: "#9ece6a" }} />
+              {isJsonString(block.resultText) ? (
+                <CollapsibleJson label="Report" value={block.resultText} syntaxStyle={syntaxStyle} />
+              ) : (
+                <CollapsibleText text={block.resultText} />
+              )}
+            </box>
+          ) : null}
+        </box>
+      ) : null}
+    </box>
+  );
+}
+
 function ToolCallRow({ block, syntaxStyle }: { block: Extract<ChatBlock, { kind: "tool" }>; syntaxStyle: SyntaxStyle }): React.ReactNode {
+  const { toolName } = parseToolName(block.name);
+  const inputObj = typeof block.input === "object" && block.input !== null ? (block.input as Record<string, unknown>) : null;
+  const isAgent =
+    block.isSubagent ||
+    toolName.toLowerCase() === "agent" ||
+    toolName.toLowerCase() === "subagent" ||
+    toolName.toLowerCase() === "task" ||
+    block.name.toLowerCase() === "task" ||
+    Boolean(inputObj && ("subagent_type" in inputObj || "subagent" in inputObj || "agent" in inputObj));
+
+  if (isAgent) {
+    return <SubagentChildView block={block} syntaxStyle={syntaxStyle} />;
+  }
+
   const glyph = TOOL_STATUS_GLYPH[block.status];
   const color = TOOL_STATUS_COLOR[block.status];
   const formatted = formatToolCall(block.name, block.input, block.isSkill);
-
-  const { toolName } = parseToolName(block.name);
-  const inputObj = typeof block.input === "object" && block.input !== null ? (block.input as Record<string, unknown>) : null;
   const isEdit = /^edit$/i.test(toolName) && typeof inputObj?.old_string === "string" && typeof inputObj?.new_string === "string";
   // The diff (Edit) / headline (Write) already say "this file changed" on their own — the tool's
   // own resultText on a successful Edit/Write is just a generic "The file ... has been updated

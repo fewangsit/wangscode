@@ -154,7 +154,7 @@ ${JSON.stringify(contract, null, 2)}
 Before writing any @wangs-ui component, delegate to the \`wangs-ui-querier\` subagent via the Agent tool to confirm every prop you use — including whether the component has an accessible-name prop. Never call a wangs-ui MCP tool directly yourself.
 
 Write:
-- ui/screens/${contract.screenName}/use${contract.screenName}ViewModel.ts — skeleton is fine here (real data wiring happens in the next phase), but the return shape must be final.
+- ui/screens/${contract.screenName}/use${contract.screenName}ViewModel.ts — declare the full ViewModel state and action signatures matching the required UI contract. Do not introduce fake mock data arrays or dummy stub values; initialize state with proper types from data/dto (real data fetching will be wired to the DataSource in the next phase).
 - ui/screens/${contract.screenName}/${contract.screenName}.tsx — every selector in the contract above must exist as \`aria-label\`/\`accessibilityLabel\` (or \`id\`/\`testID\` for the rare native-id case) on the matching element.
 - ui/components/ — extract per the \`component-spliting\` skill's four-question gate.
 - resources/Strings.ts — every user-facing string.

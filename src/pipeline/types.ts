@@ -2,7 +2,7 @@
 // own package; merged directly into wangscode so there is one source, one
 // process, no subprocess boundary. This file has no behavior of its own,
 // only the shapes shared across the other pipeline modules.
-import type { SDKMessage } from "../engine/index.ts";
+import type { CanUseTool, SDKMessage } from "../engine/index.ts";
 
 export const PHASES = ["requirements", "data-layer", "test-contract", "ui-slice", "connect", "e2e-run", "lint", "review"] as const;
 
@@ -153,6 +153,8 @@ export interface FeatureBuildArgs {
   resume: boolean;
   answer?: string;
   maxRetries?: number;
+  model?: string;
+  canUseTool?: CanUseTool;
   /**
    * Optional UI hooks — see agent-runner.ts's own `onMessage` comment for why these exist. Without
    * them the pipeline behaves exactly as before (host code, no model calls of its own); with them,

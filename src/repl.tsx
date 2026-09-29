@@ -170,9 +170,16 @@ export async function runRepl(params: ReplParams): Promise<void> {
     })();
   });
 
-  const featureBuildController = new FeatureBuildController((prompt) => inputRouter.askLine(prompt), params.cwd, chatStore);
   const permissionRequestStore = new PermissionRequestStore();
   const canUseTool = makeCanUseTool(permissionRequestStore);
+
+  const featureBuildController = new FeatureBuildController(
+    (prompt) => inputRouter.askLine(prompt),
+    params.cwd,
+    chatStore,
+    () => sessionStatus.store.get().model ?? DEFAULT_MODEL,
+    canUseTool,
+  );
 
   const renderer = await createCliRenderer();
   const root = createRoot(renderer);

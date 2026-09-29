@@ -33,6 +33,53 @@ type TrackedBlock = { kind: "thinking" } | { kind: "tool_use"; toolUseId: string
  * the status bar's view of the real interactive session. Returns true if the message was handled.
  */
 function applyStreamedContent(chatStore: ChatStore, tracked: Map<number, TrackedBlock>, message: SDKMessage): boolean {
+  if (message.parent_tool_use_id) {
+    const parentId = message.parent_tool_use_id;
+    if (message.session_id) {
+      chatStore.setChildSessionId(parentId, message.session_id);
+    }
+    if (message.type === "stream_event") {
+      const event = message.event;
+      if (event.type === "content_block_delta") {
+        if (event.delta?.type === "thinking_delta" && event.delta.thinking) {
+          chatStore.appendSubagentEvent(parentId, {
+            id: `sub-think-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+            type: "thinking",
+            content: event.delta.thinking,
+            timestamp: Date.now(),
+          });
+        }
+      } else if (event.type === "content_block_start" && event.content_block?.type === "tool_use") {
+        chatStore.appendSubagentEvent(parentId, {
+          id: event.content_block.id,
+          type: "tool_call",
+          name: event.content_block.name,
+          content: "",
+          status: "running",
+          timestamp: Date.now(),
+        });
+      }
+      return true;
+    }
+    if (message.type === "user") {
+      const content = message.message?.content;
+      if (Array.isArray(content)) {
+        for (const block of content) {
+          if (block.type === "tool_result") {
+            chatStore.appendSubagentEvent(parentId, {
+              id: block.tool_use_id,
+              type: "tool_call",
+              content: summarizeToolResultContent(block.content),
+              status: block.is_error ? "error" : "done",
+              timestamp: Date.now(),
+            });
+          }
+        }
+      }
+      return true;
+    }
+  }
+
   if (message.type === "stream_event") {
     const event = message.event;
 

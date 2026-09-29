@@ -1,3 +1,6 @@
+import * as fs from "node:fs";
+import * as os from "node:os";
+import * as path from "node:path";
 import type { AgentDefinition } from "./engine/index.ts";
 
 // Subagent definitions for every Wangs Foundation project this agent talks
@@ -156,3 +159,44 @@ export const WANGS_SUBAGENTS: Record<string, AgentDefinition> = {
   "functional-reader": functionalReader,
   "test-case-reader": testCaseReader,
 };
+
+/**
+ * Ensures that all Wangs Foundation subagents are registered as markdown agent specs
+ * in both the project's `.opencode/agents/` and global user configuration directory
+ * `~/.config/opencode/agents/`. This enables OpenCode daemon/LLM to discover them as
+ * valid subagents for the `task` tool.
+ */
+export function syncOpenCodeSubagents(cwd = process.cwd()): void {
+  try {
+    const targets = [
+      path.join(cwd, ".opencode", "agents"),
+      path.join(os.homedir(), ".config", "opencode", "agents"),
+    ];
+
+    for (const dir of targets) {
+      if (!fs.existsSync(dir)) {
+        fs.mkdirSync(dir, { recursive: true });
+      }
+      for (const [name, def] of Object.entries(WANGS_SUBAGENTS)) {
+        const filePath = path.join(dir, `${name}.md`);
+        const toolsEntries = def.tools ?? ["read", "grep"];
+        const toolsYaml = toolsEntries.length > 0
+          ? toolsEntries.map((t) => `  "${t.toLowerCase()}": true`).join("\n")
+          : "  {}";
+        const cleanDesc = def.description.replace(/"/g, '\\"');
+        const content = `---
+description: "${cleanDesc}"
+mode: subagent
+tools:
+${toolsYaml}
+---
+
+${def.prompt}
+`;
+        fs.writeFileSync(filePath, content, "utf-8");
+      }
+    }
+  } catch {
+    // Non-fatal if directory is unwritable
+  }
+}

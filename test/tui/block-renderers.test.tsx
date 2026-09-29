@@ -92,4 +92,57 @@ describe("BlockRenderers - CollapsibleJson", () => {
     expect(output).toContain("▶ Input:");
     expect(output).toContain("▶ Result:");
   });
+
+  test("renderBlock with Subagent renders as Child Agent tree with status and events", async () => {
+    const testRenderer = await createTestRenderer({ width: 90, height: 15 });
+    const root = createRoot(testRenderer.renderer);
+
+    const subagentBlock: ChatBlock = {
+      id: 2,
+      kind: "tool",
+      toolUseId: "agent-1",
+      name: "Agent",
+      input: {
+        subagent_type: "wangs-ui-querier",
+        description: "Querying Button component props from design system",
+      },
+      status: "done",
+      isSkill: false,
+      isSubagent: true,
+      subagentType: "wangs-ui-querier",
+      subagentDescription: "Querying Button component props from design system",
+      startedAt: Date.now() - 3200,
+      completedAt: Date.now(),
+      subagentEvents: [
+        {
+          id: "ev-1",
+          type: "thinking",
+          content: "Searching documentation for Button variants",
+          timestamp: Date.now() - 2000,
+        },
+        {
+          id: "ev-2",
+          type: "tool_call",
+          name: "mcp__wangs-ui__get-documentation",
+          content: "Button component docs",
+          status: "done",
+          timestamp: Date.now() - 1000,
+        },
+      ],
+      resultText: "== WANGS-UI QUERIER REPORT ==\nButton: variant, size, disabled, aria-label",
+    };
+
+    root.render(renderBlock(subagentBlock, syntaxStyle));
+    await new Promise((r) => setTimeout(r, 60));
+    await testRenderer.renderOnce();
+
+    const output = testRenderer.captureCharFrame();
+    expect(output).toContain("Child Agent: [wangs-ui-querier]");
+    expect(output).toContain("Completed");
+    expect(output).toContain("Task: Querying Button component props");
+    expect(output).toContain("Thinking: Searching documentation");
+    expect(output).toContain("Call [mcp__wangs-ui__get-documentation]");
+    expect(output).toContain("Output Report:");
+  });
 });
+

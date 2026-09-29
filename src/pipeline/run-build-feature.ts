@@ -46,7 +46,7 @@ const CODE_PHASES: readonly Exclude<PhaseName, "requirements">[] = PHASES.filter
 // to use them). Not given to `review`: it never receives the bundle, its job
 // is checking generated code against the slicing-review skill, not PRDs.
 const PHASE_TOOL_ALLOWLIST: Record<(typeof MODEL_PHASES)[number], string[]> = {
-  "data-layer": ["Read", "Write", "Edit", "Glob", "Grep", "Bash", ...DOCS_KNOWLEDGE_TOOLS],
+  "data-layer": ["Read", "Write", "Edit", "Glob", "Grep",  ...DOCS_KNOWLEDGE_TOOLS],
   "test-contract": ["Read", "Write", "Edit", "Glob", "Grep", ...DOCS_KNOWLEDGE_TOOLS],
   // "Agent" is the real SDK tool name for subagent dispatch (verified against
   // a live session reporting its own tool list) — wangs-ui-querier itself is
@@ -130,6 +130,8 @@ async function runOnePhase(
     outputFormat,
     cacheablePrefix: buildCacheableContext(bundle),
     onMessage: ctx.args.onMessage,
+    model: ctx.args.model,
+    canUseTool: ctx.args.canUseTool,
   });
 
   if (!turn.ok) {
@@ -192,7 +194,7 @@ export async function runFeatureBuildPipeline(args: FeatureBuildArgs): Promise<F
     if (!prd || !testCase?.length || !openapi?.length) {
       throw new Error(
         "First call for a feature needs prd, testCase (at least one path), and openapi (at least one path). " +
-          "Later resume calls don't need them again — they're persisted in .feature-build/<slug>/state.json.",
+        "Later resume calls don't need them again — they're persisted in .feature-build/<slug>/state.json.",
       );
     }
     state.docPaths = { prd, testCase, openapi };

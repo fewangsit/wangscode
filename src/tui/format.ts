@@ -73,6 +73,22 @@ export interface FormattedToolCall {
   rawJson?: string;
 }
 
+export function inferSubagentType(inputObj: Record<string, unknown> | null, defaultType = "subagent"): string {
+  if (!inputObj) return defaultType;
+  if (typeof inputObj.subagent_type === "string" && inputObj.subagent_type) return inputObj.subagent_type;
+  if (typeof inputObj.subagent === "string" && inputObj.subagent) return inputObj.subagent;
+  if (typeof inputObj.agent === "string" && inputObj.agent) return inputObj.agent;
+  if (typeof inputObj.name === "string" && inputObj.name) return inputObj.name;
+
+  const combined = `${inputObj.description ?? ""} ${inputObj.prompt ?? ""}`.toLowerCase();
+  if (combined.includes("ui-design-reader") || combined.includes("ui design reader") || combined.includes("ui_design_reader")) return "ui-design-reader";
+  if (combined.includes("functional-reader") || combined.includes("functional reader") || combined.includes("functional_reader")) return "functional-reader";
+  if (combined.includes("test-case-reader") || combined.includes("test case reader") || combined.includes("test_case_reader")) return "test-case-reader";
+  if (combined.includes("wangs-ui-querier") || combined.includes("wangs ui querier") || combined.includes("wangs_ui_querier")) return "wangs-ui-querier";
+
+  return defaultType;
+}
+
 /**
  * Formats tool calls and subagent calls for a tidy, human-readable terminal display,
  * preventing noisy raw JSON dumps for known tools (Agent, Bash, Read, Edit, MCP, etc.).
@@ -87,12 +103,17 @@ export function formatToolCall(rawName: string, input: unknown, isSkill = false)
   const { toolName } = parseToolName(rawName);
   const inputObj = typeof input === "object" && input !== null ? (input as Record<string, unknown>) : null;
 
-  // 2. Subagent / Agent tool
-  const isAgent = rawName.toLowerCase() === "agent" || rawName.toLowerCase() === "subagent" || Boolean(inputObj && "subagent_type" in inputObj);
+  // 2. Subagent / Agent tool (Claude Code 'Agent', OpenCode 'task')
+  const isAgent =
+    rawName.toLowerCase() === "agent" ||
+    rawName.toLowerCase() === "subagent" ||
+    rawName.toLowerCase() === "task" ||
+    toolName.toLowerCase() === "task" ||
+    Boolean(inputObj && ("subagent_type" in inputObj || "subagent" in inputObj || "agent" in inputObj));
 
   if (isAgent) {
     if (inputObj) {
-      const subagentType = typeof inputObj.subagent_type === "string" ? inputObj.subagent_type : "subagent";
+      const subagentType = inferSubagentType(inputObj);
       const description = typeof inputObj.description === "string" ? inputObj.description : undefined;
       const prompt = typeof inputObj.prompt === "string" ? inputObj.prompt : undefined;
 

@@ -142,10 +142,10 @@ export function checkSelectorContract(repoRoot: string, contract: PageObjectCont
   return missing.length === 0
     ? { ok: true }
     : {
-        ok: false,
-        failureReport: `Missing selector attribute(s) in ${uiDir}: ${missing.join(", ")}. Every selector in the Page Object contract must exist as aria-label/title/accessibilityLabel (or id/testID for the rare native-id case) on the rendered component.`,
-        classification: "ui-slice",
-      };
+      ok: false,
+      failureReport: `Missing selector attribute(s) in ${uiDir}: ${missing.join(", ")}. Every selector in the Page Object contract must exist as aria-label/title/accessibilityLabel (or id/testID for the rare native-id case) on the rendered component.`,
+      classification: "ui-slice",
+    };
 }
 
 function grepRecursive(dir: string, needle: string): boolean {

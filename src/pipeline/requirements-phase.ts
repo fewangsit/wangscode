@@ -53,6 +53,8 @@ async function gapCheck(ctx: PipelineContext, bundle: RequirementBundle): Promis
     outputFormat: { type: "json_schema", schema: gapReportJsonSchema },
     cacheablePrefix: buildCacheableContext(bundle),
     onMessage: ctx.args.onMessage,
+    model: ctx.args.model,
+    canUseTool: ctx.args.canUseTool,
   });
   if (!result.ok) {
     throw new Error(`gap-check turn failed: ${result.errors?.join("; ") ?? result.resultText}`);

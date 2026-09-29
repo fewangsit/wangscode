@@ -124,6 +124,24 @@ describe("format utilities", () => {
       expect(result.rawJson).toBeUndefined();
     });
 
+    test("formats OpenCode task tool calls as Subagent with subagent or agent name", () => {
+      const inputWithSubagent = {
+        subagent: "functional-reader",
+        description: "Read Functionality.md and extract rules",
+      };
+      const res1 = formatToolCall("task", inputWithSubagent);
+      expect(res1.headline).toBe("Subagent: functional-reader");
+      expect(res1.detail).toBe("↳ Read Functionality.md and extract rules");
+
+      const inputWithPrompt = {
+        agent: "test-case-reader",
+        prompt: "Read Test Case.md and extract all test cases",
+      };
+      const res2 = formatToolCall("task", inputWithPrompt);
+      expect(res2.headline).toBe("Subagent: test-case-reader");
+      expect(res2.detail).toBe("↳ Read Test Case.md and extract all test cases");
+    });
+
     test("formats Bash commands with a fixed headline and the command as detail", () => {
       const result = formatToolCall("Bash", { command: "bun test" });
       expect(result).toEqual({

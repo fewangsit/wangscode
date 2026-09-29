@@ -4,16 +4,7 @@
     "noEmit": true,
     "noUnusedLocals": false,
     "noUnusedParameters": false,
-    "types": [
-      "bun",
-      "node",
-      "react"
-    ]
+    "types": ["bun", "node", "react"]
   },
-  "include": [
-    "./**/*.ts",
-    "./**/*.tsx",
-    "../src/**/*.ts",
-    "../src/**/*.tsx"
-  ]
+  "include": ["./**/*.ts", "./**/*.tsx", "../src/**/*.ts", "../src/**/*.tsx"]
 }

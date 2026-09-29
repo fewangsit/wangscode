@@ -1,5 +1,5 @@
 import type { AgentEngine, EngineRunOptions } from "./types.ts";
-import { OpenCodeEngineStub } from "./opencode-stub.ts";
+import { OpenCodeSdkEngine, getOpencodeClient } from "./opencode-sdk-engine.ts";
 import type { SessionInfo } from "../tui/SessionPicker.tsx";
 
 // ============================================================================
@@ -235,12 +235,7 @@ export function createSdkMcpServer(config: any): any {
   return config;
 }
 
-export function tool(
-  name: string,
-  description: string,
-  schema: any,
-  handler: (args: any) => Promise<any>,
-): any;
+export function tool(name: string, description: string, schema: any, handler: (args: any) => Promise<any>): any;
 export function tool(def: any): any;
 export function tool(...args: any[]): any {
   if (typeof args[0] === "string") {
@@ -249,28 +244,90 @@ export function tool(...args: any[]): any {
   return args[0];
 }
 
-export async function renameSession(
-  _sessionId: string,
-  _newTitle: string,
-  _opts?: { dir?: string; sessionStore?: SessionStore },
-): Promise<void> {
-  // OpenCode rename
+export async function renameSession(sessionId: string, newTitle: string, opts?: { dir?: string; sessionStore?: SessionStore }): Promise<void> {
+  try {
+    const client = await getOpencodeClient({ directory: opts?.dir });
+    await client.session.update({
+      path: { id: sessionId },
+      body: { title: newTitle },
+      query: { directory: opts?.dir },
+    });
+  } catch {
+    // fallback / ignore
+  }
 }
 
-export async function getSessionMessages(_sessionId: string, _opts?: any): Promise<SessionMessage[]> {
-  return [];
+export async function getSessionMessages(sessionId: string, opts?: any): Promise<SessionMessage[]> {
+  try {
+    const client = await getOpencodeClient({ directory: opts?.dir });
+    const res = await client.session.messages({ path: { id: sessionId }, query: { directory: opts?.dir } });
+    const messages: SessionMessage[] = [];
+    for (const msg of res.data ?? []) {
+      const parts = msg.parts ?? [];
+      const timestamp = msg.info?.time?.created ? new Date(msg.info.time.created).toISOString() : new Date().toISOString();
+      if (msg.info?.role === "user") {
+        const textParts = parts
+          .filter((p: any) => p.type === "text")
+          .map((p: any) => p.text)
+          .join("\n");
+        messages.push({
+          type: "user",
+          message: { role: "user", content: textParts },
+          session_id: sessionId,
+          timestamp,
+        } as SessionMessage);
+      } else if (msg.info?.role === "assistant") {
+        const content: any[] = [];
+        for (const p of parts) {
+          if (p.type === "reasoning") {
+            content.push({ type: "thinking", thinking: p.text });
+          } else if (p.type === "text") {
+            content.push({ type: "text", text: p.text });
+          } else if (p.type === "tool") {
+            content.push({
+              type: "tool_use",
+              id: (p as any).callID || p.id,
+              name: (p as any).tool,
+              input: (p as any).state?.input ?? {},
+            });
+          }
+        }
+        messages.push({
+          type: "assistant",
+          message: {
+            role: "assistant",
+            content,
+            model: msg.info.modelID,
+          },
+          session_id: sessionId,
+          timestamp,
+        } as SessionMessage);
+      }
+    }
+    return messages;
+  } catch {
+    return [];
+  }
 }
 
 /**
  * OpenCode implementation of `query()`.
  */
 export function query(params: { prompt: any; options?: Options }): Query {
-  const engine = new OpenCodeEngineStub();
+  const engine = new OpenCodeSdkEngine({ cwd: params.options?.cwd });
+
   return createOpenCodeSession(engine, params.prompt, {
     cwd: params.options?.cwd ?? process.cwd(),
-    model: params.options?.model ?? "claude-3-7-sonnet",
+    model: params.options?.model ?? "opencode-go/qwen3.8-flash",
     effort: params.options?.thinking?.effort ?? "high",
     resumeSessionId: params.options?.resume,
+    canUseTool: params.options?.canUseTool,
+    systemPrompt:
+      typeof params.options?.systemPrompt === "object" && params.options?.systemPrompt?.append
+        ? params.options.systemPrompt.append
+        : params.options?.systemPrompt,
+    mcpServers: params.options?.mcpServers,
+    outputFormat: params.options?.outputFormat,
   });
 }
 
@@ -278,19 +335,58 @@ export function query(params: { prompt: any; options?: Options }): Query {
  * OpenCode implementation of `listSessions()`.
  */
 export async function listSessions(opts?: { dir?: string; sessionStore?: SessionStore }): Promise<any[]> {
-  const engine = new OpenCodeEngineStub();
+  const engine = new OpenCodeSdkEngine({ cwd: opts?.dir });
+
+  try {
+    const client = await getOpencodeClient({ directory: opts?.dir });
+    const res = await client.session.list({ query: { directory: opts?.dir } });
+    if (res.data && res.data.length > 0) {
+      return res.data.map((s) => ({
+        sessionId: s.id,
+        summary: s.title ?? `OpenCode Session (${s.id.slice(0, 8)})`,
+        firstPrompt: s.title,
+        lastModified: s.time?.updated ?? s.time?.created ?? Date.now(),
+      }));
+    }
+  } catch {
+    // Fallback if client is unreachable
+  }
+
   return shimListSessions(engine, opts?.dir ?? process.cwd());
+}
+
+/**
+ * Tries to extract a JSON value from arbitrary model text.
+ * Handles: bare JSON, ```json ... ``` fences, and ``` ... ``` fences.
+ */
+function extractJsonFromText(text: string): unknown | undefined {
+  if (!text) return undefined;
+
+  // Try stripping markdown code fences first
+  const fenceMatch = text.match(/```(?:json)?\s*([\s\S]*?)```/);
+  const candidate = fenceMatch ? fenceMatch[1].trim() : text.trim();
+
+  // Find the first '{' or '[' and try from there
+  const start = candidate.search(/[{[]/);
+  if (start === -1) return undefined;
+
+  try {
+    return JSON.parse(candidate.slice(start));
+  } catch {
+    // Try the whole candidate
+    try {
+      return JSON.parse(candidate);
+    } catch {
+      return undefined;
+    }
+  }
 }
 
 /**
  * Creates an OpenCode session matching the TUI Query protocol.
  */
-export function createOpenCodeSession(
-  engine: AgentEngine,
-  promptInput: AsyncIterable<any> | string,
-  options: EngineRunOptions,
-): Query {
-  let activeModel = options.model ?? "claude-3-7-sonnet";
+export function createOpenCodeSession(engine: AgentEngine, promptInput: AsyncIterable<any> | string, options: EngineRunOptions): Query {
+  let activeModel = options.model ?? "opencode-go/qwen3.8-flash";
   let activeEffort: EffortLevel = options.effort ?? "high";
 
   const sessionObj: Partial<Query> = {
@@ -307,9 +403,7 @@ export function createOpenCodeSession(
     },
 
     async supportedCommands(): Promise<Array<{ name: string; description: string }>> {
-      return [
-        { name: "/create-feature", description: "Build a Wangs Foundation feature end-to-end via gated pipeline" },
-      ];
+      return [{ name: "/create-feature", description: "Build a Wangs Foundation feature end-to-end via gated pipeline" }];
     },
 
     async setModel(model: string): Promise<void> {
@@ -326,30 +420,31 @@ export function createOpenCodeSession(
     },
 
     async mcpServerStatus(): Promise<McpServerStatus[]> {
-      return [
-        {
-          name: "opencode-tools",
-          status: "connected",
-          tools: [
-            {
-              name: "file_edit",
-              description: "Edit files on disk via OpenCode",
-            },
-            {
-              name: "bash",
-              description: "Execute terminal commands",
-            },
-          ],
-        },
-      ];
+      if ("getMcpStatus" in engine && typeof (engine as any).getMcpStatus === "function") {
+        try {
+          const list = await (engine as any).getMcpStatus();
+          if (Array.isArray(list)) return list;
+        } catch {
+          // fallback
+        }
+      }
+      return [];
     },
 
-    async toggleMcpServer(_name: string, _enabled: boolean): Promise<any> {
+    async toggleMcpServer(name: string, enabled: boolean): Promise<any> {
+      if ("toggleMcp" in engine && typeof (engine as any).toggleMcp === "function") {
+        return (engine as any).toggleMcp(name, enabled);
+      }
       return { success: true };
     },
 
-    async reconnectMcpServer(_name: string): Promise<void> {
-      // Reconnect OpenCode tool
+    async reconnectMcpServer(name: string): Promise<void> {
+      try {
+        const client = await getOpencodeClient({ directory: options.cwd });
+        await client.mcp.connect({ path: { name }, query: { directory: options.cwd } });
+      } catch {
+        // Ignore reconnect error
+      }
     },
 
     async interrupt(): Promise<any> {
@@ -357,10 +452,12 @@ export function createOpenCodeSession(
       return undefined;
     },
 
-    async usage_EXPERIMENTAL_MAY_CHANGE_DO_NOT_RELY_ON_THIS_API_YET(
-      _opts?: { skipBehaviors?: boolean },
-    ): Promise<SDKControlGetUsageResponse> {
+    async usage_EXPERIMENTAL_MAY_CHANGE_DO_NOT_RELY_ON_THIS_API_YET(_opts?: { skipBehaviors?: boolean }): Promise<SDKControlGetUsageResponse> {
       const usage = await engine.getUsage();
+      const timing =
+        "getTimingStats" in engine && typeof (engine as any).getTimingStats === "function"
+          ? (engine as any).getTimingStats()
+          : { apiDurationMs: 0, wallDurationMs: 0 };
 
       const modelUsageRecord: Record<string, ModelUsage> = {
         [activeModel]: {
@@ -379,28 +476,19 @@ export function createOpenCodeSession(
       return {
         session: {
           total_cost_usd: usage.costUSD,
-          total_api_duration_ms: 1200,
-          total_duration_ms: 45000,
+          total_api_duration_ms: timing.apiDurationMs,
+          total_duration_ms: timing.wallDurationMs,
           total_lines_added: 0,
           total_lines_removed: 0,
           model_usage: modelUsageRecord,
         },
-        subscription_type: "opencode-pro",
-        rate_limits_available: true,
-        rate_limits: {
-          five_hour: {
-            utilization: 10,
-            resets_at: new Date(Date.now() + 3600000 * 4).toISOString(),
-          },
-          seven_day: {
-            utilization: 5,
-            resets_at: new Date(Date.now() + 86400000 * 6).toISOString(),
-          },
-        },
+        subscription_type: null,
+        rate_limits_available: false,
+        rate_limits: null,
         behaviors: {
           day: {
-            request_count: 1,
-            session_count: 1,
+            request_count: 0,
+            session_count: 0,
             behaviors: {},
           },
         },
@@ -411,21 +499,29 @@ export function createOpenCodeSession(
   // Implement AsyncIterable<SDKMessage>
   const asyncIterable = {
     async *[Symbol.asyncIterator](): AsyncGenerator<SDKMessage, void, unknown> {
-      const sessionId = options.resumeSessionId ?? `opencode-session-${Date.now()}`;
+      let sessionId = options.resumeSessionId;
+      if (!sessionId && "initSession" in engine && typeof (engine as any).initSession === "function") {
+        try {
+          sessionId = await (engine as any).initSession(options);
+        } catch {
+          // fallback
+        }
+      }
+      sessionId = sessionId ?? (engine as any).activeSessionId ?? `opencode-session-${Date.now()}`;
 
       // Emit system/init message so SessionStatusStore knows the session is ready
-      yield ({
+      yield {
         type: "system",
         subtype: "init",
         session_id: sessionId,
         model: activeModel,
         cwd: options.cwd,
         effort: activeEffort,
-        permissionMode: "default",
+        permissionMode: options.permissionMode ?? "default",
         apiKeySource: "opencode",
-        claudeCodeVersion: "opencode-1.0.0",
+        claudeCodeVersion: "opencode-1.18.32",
         uuid: "init-uuid" as any,
-      } as unknown as SDKMessage);
+      } as unknown as SDKMessage;
 
       // Stream chunks from the OpenCode engine
       const stream = engine.streamPrompt(promptInput, {
@@ -436,6 +532,11 @@ export function createOpenCodeSession(
 
       let contentIndex = 0;
       let fullResultText = "";
+      // Tracks the most recent complete text snapshot from message.part.updated.
+      // When present, this is preferred over accumulated text_deltas for
+      // structured output extraction because it is guaranteed to be the
+      // canonical final text that the model produced.
+      let lastTextSnapshot = "";
 
       for await (const chunk of stream) {
         if (chunk.type === "thinking_delta") {
@@ -446,6 +547,8 @@ export function createOpenCodeSession(
               index: contentIndex,
               content_block: { type: "thinking", thinking: "" },
             },
+            parent_tool_use_id: chunk.parentToolUseId,
+            session_id: chunk.childSessionId,
           } as SDKMessage;
 
           yield {
@@ -455,6 +558,8 @@ export function createOpenCodeSession(
               index: contentIndex,
               delta: { type: "thinking_delta", thinking: chunk.thinking },
             },
+            parent_tool_use_id: chunk.parentToolUseId,
+            session_id: chunk.childSessionId,
           } as SDKMessage;
 
           yield {
@@ -463,8 +568,15 @@ export function createOpenCodeSession(
               type: "content_block_stop",
               index: contentIndex,
             },
+            parent_tool_use_id: chunk.parentToolUseId,
+            session_id: chunk.childSessionId,
           } as SDKMessage;
           contentIndex++;
+        } else if (chunk.type === "text_snapshot") {
+          // Complete text of a finished text part — store as the canonical snapshot.
+          // Do NOT yield a stream_event here (the deltas already streamed the
+          // content live); this is only for structured output extraction later.
+          lastTextSnapshot = chunk.text;
         } else if (chunk.type === "text_delta") {
           fullResultText += chunk.text;
           yield {
@@ -474,6 +586,8 @@ export function createOpenCodeSession(
               index: contentIndex,
               delta: { type: "text_delta", text: chunk.text },
             },
+            parent_tool_use_id: chunk.parentToolUseId,
+            session_id: chunk.childSessionId,
           } as SDKMessage;
         } else if (chunk.type === "tool_call_start") {
           yield {
@@ -483,6 +597,8 @@ export function createOpenCodeSession(
               index: contentIndex,
               content_block: { type: "tool_use", id: chunk.id, name: chunk.name, input: {} },
             },
+            parent_tool_use_id: chunk.parentToolUseId,
+            session_id: chunk.childSessionId,
           } as SDKMessage;
         } else if (chunk.type === "tool_call_delta") {
           yield {
@@ -492,6 +608,8 @@ export function createOpenCodeSession(
               index: contentIndex,
               delta: { type: "input_json_delta", partial_json: chunk.partialJson },
             },
+            parent_tool_use_id: chunk.parentToolUseId,
+            session_id: chunk.childSessionId,
           } as SDKMessage;
         } else if (chunk.type === "tool_call_end") {
           yield {
@@ -500,8 +618,39 @@ export function createOpenCodeSession(
               type: "content_block_stop",
               index: contentIndex,
             },
+            parent_tool_use_id: chunk.parentToolUseId,
+            session_id: chunk.childSessionId,
           } as SDKMessage;
           contentIndex++;
+        } else if (chunk.type === "tool_result") {
+          yield {
+            type: "user",
+            message: {
+              role: "user",
+              content: [
+                {
+                  type: "tool_result",
+                  tool_use_id: chunk.id,
+                  content: chunk.content,
+                  is_error: chunk.isError,
+                },
+              ],
+            },
+            parent_tool_use_id: chunk.parentToolUseId,
+            session_id: chunk.childSessionId ?? sessionId,
+          } as SDKMessage;
+        } else if (chunk.type === "error") {
+          fullResultText += `\n[OpenCode Error] ${chunk.message}`;
+          yield {
+            type: "stream_event",
+            event: {
+              type: "content_block_delta",
+              index: 0,
+              delta: { type: "text_delta", text: `\n[OpenCode Error] ${chunk.message}\n` },
+            },
+            session_id: sessionId,
+            uuid: `uuid-${Date.now()}` as any,
+          } as SDKMessage;
         }
       }
 
@@ -513,7 +662,9 @@ export function createOpenCodeSession(
         message: {
           id: `msg-${Date.now()}`,
           role: "assistant",
-          content: [{ type: "text", text: fullResultText }],
+          // Prefer the canonical snapshot text (from message.part.updated) over
+          // accumulated deltas. If neither exists, fall back to empty string.
+          content: [{ type: "text", text: lastTextSnapshot || fullResultText }],
           model: activeModel,
           stop_reason: "end_turn",
           stop_sequence: null,
@@ -526,24 +677,40 @@ export function createOpenCodeSession(
         uuid: `uuid-${Date.now()}` as any,
       } as SDKMessage;
 
+      const timing =
+        "getTimingStats" in engine && typeof (engine as any).getTimingStats === "function"
+          ? (engine as any).getTimingStats()
+          : { apiDurationMs: 0, wallDurationMs: 0 };
+
       // Result message for pipeline runners
-      yield ({
+      yield {
         type: "result",
         subtype: "success",
         is_error: false,
         result: fullResultText,
-        structured_output: undefined,
+        // Extract structured JSON from the model's text response when the
+        // caller requested a json_schema output format.  OpenCode's API does
+        // not have a native outputFormat field, so the schema instruction is
+        // injected into the system prompt (see opencode-sdk-engine.ts) and
+        // the model embeds its JSON answer in the response text.
+        // Prefer lastTextSnapshot (canonical final text from message.part.updated)
+        // over accumulated text_deltas — the snapshot is guaranteed to be the
+        // complete final text even when the model sends one big update instead
+        // of incremental delta events.
+        structured_output: options.outputFormat
+          ? extractJsonFromText(lastTextSnapshot || fullResultText)
+          : undefined,
         total_cost_usd: usage.costUSD,
         session_id: sessionId,
-        duration_ms: 1000,
-        duration_api_ms: 800,
+        duration_ms: timing.wallDurationMs,
+        duration_api_ms: timing.apiDurationMs,
         num_turns: 1,
         uuid: `res-${Date.now()}` as any,
         usage: {
           input_tokens: usage.inputTokens,
           output_tokens: usage.outputTokens,
         },
-      } as unknown as SDKMessage);
+      } as unknown as SDKMessage;
     },
   };
 
