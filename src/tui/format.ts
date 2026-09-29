@@ -314,3 +314,67 @@ export function getNodeSummary(val: unknown): string {
   }
   return String(val);
 }
+
+/**
+ * Formats a subagent identifier (e.g. "general-task", "wangs-ui-querier")
+ * into a title-cased display label (e.g. "General Task", "Wangs Ui Querier").
+ */
+export function formatSubagentTitle(subagentType: string): string {
+  if (!subagentType) return "Subagent";
+  return subagentType
+    .split(/[-_ ]+/)
+    .filter(Boolean)
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
+    .join(" ");
+}
+
+/**
+ * Formats child tool name and raw input/detail into a clean representation
+ * matching OpenCode CLI style (e.g. Grep pattern, Read path, Bash command).
+ */
+export function formatChildToolLine(toolName: string, rawContent: string): { name: string; detail: string } {
+  let cleanName = toolName;
+  const parsed = parseToolName(toolName);
+  if (parsed.isMcp) {
+    cleanName = parsed.toolName;
+  }
+  cleanName = cleanName
+    .split(/[-_ ]+/)
+    .filter(Boolean)
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
+    .join(" ");
+
+  let detail = (rawContent || "").trim();
+  if (detail.startsWith("<path>")) {
+    detail = detail.replace(/^<path>/, "").replace(/<\/path>.*$/, "").trim();
+  }
+  try {
+    const parsedObj = JSON.parse(detail);
+    if (parsedObj && typeof parsedObj === "object") {
+      const p =
+        parsedObj.path ||
+        parsedObj.file_path ||
+        parsedObj.filePath ||
+        parsedObj.pattern ||
+        parsedObj.query ||
+        parsedObj.command ||
+        parsedObj.description ||
+        parsedObj.target;
+      if (p) {
+        detail = String(p);
+      } else {
+        const values = Object.values(parsedObj);
+        if (values.length === 1 && typeof values[0] === "string") {
+          detail = values[0];
+        } else {
+          detail = summarizeJson(parsedObj, 60);
+        }
+      }
+    }
+  } catch {}
+
+  detail = shortenPath(detail);
+  detail = detail.replace(/\s+/g, " ").trim();
+
+  return { name: cleanName, detail };
+}

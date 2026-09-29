@@ -3,7 +3,16 @@ import { useEffect, useState } from "react";
 import type { SyntaxStyle } from "@opentui/core";
 
 import type { ChatBlock, ToolCallBlock } from "./chat-store.ts";
-import { formatToolCall, getNodeSummary, inferSubagentType, isJsonString, parseToolName } from "./format.ts";
+import {
+  formatChildToolLine,
+  formatSubagentTitle,
+  formatToolCall,
+  getNodeSummary,
+  inferSubagentType,
+  isJsonString,
+  parseToolName,
+  shortenPath,
+} from "./format.ts";
 import { DIFF_ADD_BG, DIFF_DEL_BG, GOLD, GOLD_DIM, ROLE_COLOR, TOOL_STATUS_COLOR, TOOL_STATUS_GLYPH } from "./theme.ts";
 
 export interface JsonNodeViewProps {
@@ -235,6 +244,8 @@ function EditDiffView({ oldString, newString }: { oldString: string; newString: 
   );
 }
 
+const BRAILLE_SPINNERS = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
+
 function SubagentChildView({
   block,
   syntaxStyle,
@@ -243,20 +254,22 @@ function SubagentChildView({
   syntaxStyle: SyntaxStyle;
 }): React.ReactNode {
   const [expanded, setExpanded] = useState(true);
-  const [elapsedSec, setElapsedSec] = useState(0);
+  const [spinnerIdx, setSpinnerIdx] = useState(0);
 
   useEffect(() => {
-    if (block.status !== "running" || !block.startedAt) return;
+    if (block.status !== "running") return;
     const interval = setInterval(() => {
-      setElapsedSec(Math.max(0, Math.floor((Date.now() - (block.startedAt ?? Date.now())) / 1000)));
-    }, 1000);
+      setSpinnerIdx((prev) => (prev + 1) % BRAILLE_SPINNERS.length);
+    }, 80);
     return () => clearInterval(interval);
-  }, [block.status, block.startedAt]);
+  }, [block.status]);
 
   const inputObj = typeof block.input === "object" && block.input !== null ? (block.input as Record<string, unknown>) : null;
-  const subagentType =
+  const rawSubagentType =
     block.subagentType ||
     inferSubagentType(inputObj);
+  const formattedTitle = formatSubagentTitle(rawSubagentType);
+
   const taskDesc =
     block.subagentDescription ||
     (typeof inputObj?.description === "string" ? inputObj.description : undefined) ||
@@ -266,72 +279,88 @@ function SubagentChildView({
   const durationSec =
     block.completedAt && block.startedAt
       ? ((block.completedAt - block.startedAt) / 1000).toFixed(1)
-      : block.startedAt
-        ? ((Date.now() - block.startedAt) / 1000).toFixed(1)
-        : null;
+      : null;
+
+  const glyph =
+    block.status === "running"
+      ? BRAILLE_SPINNERS[spinnerIdx]
+      : block.status === "done"
+        ? "✓"
+        : "✗";
+
+  const glyphColor =
+    block.status === "running"
+      ? "#7dcfff"
+      : block.status === "done"
+        ? "#9ece6a"
+        : "#f7768e";
 
   const toggleGlyph = expanded ? "▼" : "▶";
-  const statusColor = TOOL_STATUS_COLOR[block.status] ?? GOLD;
-  const statusBadge =
-    block.status === "running"
-      ? `◌ Running (${elapsedSec}s)`
-      : block.status === "done"
-        ? `✓ Completed${durationSec ? ` (${durationSec}s)` : ""}`
-        : `✗ Failed${durationSec ? ` (${durationSec}s)` : ""}`;
 
   return (
-    <box style={{ flexDirection: "column", marginBottom: 1, paddingLeft: 1 }}>
-      <box style={{ flexDirection: "row", alignItems: "center" }} onMouseDown={() => setExpanded((prev) => !prev)}>
-        <text content={`├─ 🔀 Child Agent: [${subagentType}] `} style={{ fg: "#7dcfff" }} />
-        <text content={` ${toggleGlyph} `} style={{ fg: "#565f89" }} />
-        <text content={statusBadge} style={{ fg: statusColor }} />
+    <box style={{ flexDirection: "column", marginBottom: 1 }}>
+      {/* Header line: ⠋ General Task - Migrate batch 2 web.ts files (part A) */}
+      <box
+        style={{ flexDirection: "row", alignItems: "center" }}
+        onMouseDown={() => setExpanded((prev) => !prev)}
+      >
+        <text content={`${glyph} `} style={{ fg: glyphColor }} />
+        <text content={formattedTitle} style={{ fg: "#ffffff" }} />
+        {taskDesc ? (
+          <text
+            content={` - ${taskDesc.replace(/\s+/g, " ").trim()}`}
+            style={{ fg: "#c0caf5" }}
+            wrapMode="none"
+            truncate
+          />
+        ) : null}
+        {durationSec ? (
+          <text content={` (${durationSec}s)`} style={{ fg: "#565f89" }} />
+        ) : null}
+        <text content={` ${toggleGlyph}`} style={{ fg: "#565f89" }} />
       </box>
 
+      {/* Child events: ↳ Grep ... / ↳ Read ... / ↳ Bash ... */}
       {expanded ? (
-        <box style={{ flexDirection: "column", paddingLeft: 3, marginTop: 1 }}>
-          {taskDesc ? (
-            <box style={{ flexDirection: "row", marginBottom: 1 }}>
-              <text content="│  ├─ 📋 Task: " style={{ fg: "#565f89" }} />
-              <text
-                content={taskDesc.replace(/\s+/g, " ").slice(0, 80) + (taskDesc.length > 80 ? "…" : "")}
-                style={{ fg: "#c0caf5" }}
-                wrapMode="none"
-                truncate
-              />
-            </box>
-          ) : null}
-
+        <box style={{ flexDirection: "column", paddingLeft: 2 }}>
           {block.subagentEvents && block.subagentEvents.length > 0 ? (
             <box style={{ flexDirection: "column" }}>
-              {block.subagentEvents.map((ev, i) => (
-                <box key={ev.id || i} style={{ flexDirection: "row", marginBottom: 1 }}>
-                  {ev.type === "thinking" ? (
-                    <>
-                      <text content="│  ├─ 💭 Thinking: " style={{ fg: "#7aa2f7" }} />
+              {block.subagentEvents.map((ev, i) => {
+                if (ev.type === "thinking") {
+                  return (
+                    <box key={ev.id || i} style={{ flexDirection: "row" }}>
+                      <text content="↳ " style={{ fg: "#565f89" }} />
+                      <text content="Thinking: " style={{ fg: "#7aa2f7" }} />
                       <text
-                        content={ev.content.replace(/\s+/g, " ").slice(0, 70)}
+                        content={ev.content.replace(/\s+/g, " ").slice(0, 90)}
                         style={{ fg: "#a9b1d6" }}
                         wrapMode="none"
                         truncate
                       />
-                    </>
-                  ) : (
-                    <>
-                      <text
-                        content={`│  ├─ ${ev.status === "running" ? "◌" : ev.status === "error" ? "✗" : "🛠️"} Call [${ev.name ?? "tool"}]: `}
-                        style={{ fg: ev.status ? (TOOL_STATUS_COLOR[ev.status] ?? GOLD) : GOLD }}
-                      />
-                      <text content={ev.content.slice(0, 60)} style={{ fg: "#94a3b8" }} wrapMode="none" truncate />
-                    </>
-                  )}
-                </box>
-              ))}
+                    </box>
+                  );
+                }
+
+                const { name, detail } = formatChildToolLine(ev.name ?? "tool", ev.content);
+                const statusColor = ev.status === "error" ? "#f7768e" : ev.status === "running" ? "#7dcfff" : "#94a3b8";
+
+                return (
+                  <box key={ev.id || i} style={{ flexDirection: "row" }}>
+                    <text content="↳ " style={{ fg: "#565f89" }} />
+                    <text content={`${name} `} style={{ fg: "#e0af68" }} />
+                    <text content={detail.slice(0, 90)} style={{ fg: statusColor }} wrapMode="none" truncate />
+                  </box>
+                );
+              })}
             </box>
           ) : null}
 
           {block.resultText ? (
             <box style={{ flexDirection: "column", marginTop: 1 }}>
-              <text content="│  └─ 📄 Output Report:" style={{ fg: "#9ece6a" }} />
+              <box style={{ flexDirection: "row" }}>
+                <text content="↳ " style={{ fg: "#565f89" }} />
+                <text content="Output Report:" style={{ fg: "#9ece6a" }} />
+              </box>
               {isJsonString(block.resultText) ? (
                 <CollapsibleJson label="Report" value={block.resultText} syntaxStyle={syntaxStyle} />
               ) : (

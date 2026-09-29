@@ -1,5 +1,15 @@
 import { describe, expect, test } from "bun:test";
-import { capitalize, formatToolCall, formatToolLabel, isJsonString, parseToolName, shortenPath, summarizeJson } from "../../src/tui/format.ts";
+import {
+  capitalize,
+  formatChildToolLine,
+  formatSubagentTitle,
+  formatToolCall,
+  formatToolLabel,
+  isJsonString,
+  parseToolName,
+  shortenPath,
+  summarizeJson,
+} from "../../src/tui/format.ts";
 
 describe("format utilities", () => {
   describe("capitalize", () => {
@@ -237,6 +247,33 @@ describe("format utilities", () => {
       const summary = summarizeJson(large, 40);
       expect(summary).toContain("+");
       expect(summary.length).toBeLessThanOrEqual(50);
+    });
+  });
+
+  describe("formatSubagentTitle", () => {
+    test("formats kebab-case and snake_case into title-cased words", () => {
+      expect(formatSubagentTitle("general-task")).toBe("General Task");
+      expect(formatSubagentTitle("wangs-ui-querier")).toBe("Wangs Ui Querier");
+      expect(formatSubagentTitle("test_case_reader")).toBe("Test Case Reader");
+      expect(formatSubagentTitle("")).toBe("Subagent");
+    });
+  });
+
+  describe("formatChildToolLine", () => {
+    test("formats standard tools with capitalized names and clean details", () => {
+      const grep = formatChildToolLine("grep", "import.*Spectra|from '@testspectra/matchers'");
+      expect(grep.name).toBe("Grep");
+      expect(grep.detail).toBe("import.*Spectra|from '@testspectra/matchers'");
+
+      const bash = formatChildToolLine("bash", JSON.stringify({ command: "npx oxfmt --check 2>&1" }));
+      expect(bash.name).toBe("Bash");
+      expect(bash.detail).toBe("npx oxfmt --check 2>&1");
+    });
+
+    test("formats MCP tools cleanly without raw prefix", () => {
+      const mcp = formatChildToolLine("mcp__wangs-ui__get-documentation", JSON.stringify({ component: "Button" }));
+      expect(mcp.name).toBe("Get Documentation");
+      expect(mcp.detail).toBe("Button");
     });
   });
 });

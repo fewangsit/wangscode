@@ -137,12 +137,12 @@ describe("BlockRenderers - CollapsibleJson", () => {
     await testRenderer.renderOnce();
 
     const output = testRenderer.captureCharFrame();
-    expect(output).toContain("Child Agent: [wangs-ui-querier]");
-    expect(output).toContain("Completed");
-    expect(output).toContain("Task: Querying Button component props");
+    expect(output).toContain("Wangs Ui Querier");
+    expect(output).toContain("Querying Button component props");
     expect(output).toContain("Thinking: Searching documentation");
-    expect(output).toContain("Call [mcp__wangs-ui__get-documentation]");
+    expect(output).toContain("↳ Get Documentation");
     expect(output).toContain("Output Report:");
+    expect(output).toContain("WANGS-UI QUERIER REPORT");
   });
 });
 
